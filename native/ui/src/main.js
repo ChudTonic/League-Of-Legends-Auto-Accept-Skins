@@ -7,6 +7,18 @@
 //             get_diagnostics, get_profile, capture_debug_frame
 //   events:   state-changed  (payload = full state snapshot)
 //             notification   (optional: {title, message, tone})
+// Skins control panel (S9, see docs/SKINS_PORT.md) — its own command/event
+// set, additive, does not touch anything above:
+//   commands: skins_get_state, skins_save_settings, skins_download,
+//             skins_activate_pengu, skins_set_enabled, skins_diagnostics,
+//             skins_party_enable, skins_party_disable, skins_party_add_peer,
+//             skins_party_get_state
+//   events:   skins-download-progress ({phase, done, total})
+//             skins-download-done     ({ok, error?})
+//   Party has no push event: the backend's "party-state" broadcast goes out
+//   over the in-client bridge WebSocket to the Pengu Loader plugins, not to
+//   this webview — the Skins page instead polls skins_party_get_state while
+//   it's the active page.
 // Falls back to MOCK_STATE / MOCK data in a plain browser so index.html
 // previews without a backend.
 // ============================================================
@@ -42,7 +54,7 @@ const TONE = { success: "#33e0a0", running: "#33e0a0", ice: "#35e4ff", info: "#3
 const toneColor = (t) => TONE[t] || TONE.neutral;
 
 // ── Glyphs (inline SVG so they inherit currentColor) ────────────────────────
-const GLYPH_NAMES = ["dashboard", "profile", "settings", "activity", "diagnostics", "power", "bolt", "crosshair", "camera", "lock", "warning", "ping", "refresh", "copy", "chevron", "shield"];
+const GLYPH_NAMES = ["dashboard", "profile", "settings", "activity", "diagnostics", "power", "bolt", "crosshair", "camera", "lock", "warning", "ping", "refresh", "copy", "chevron", "shield", "skin"];
 const GLYPHS = {};
 async function loadGlyphs() {
   await Promise.all(GLYPH_NAMES.map(async (n) => {
@@ -55,6 +67,7 @@ const glyphForTool = (id) => (id === "auto_accept" ? "bolt" : id === "auto_range
 const NAV = [
   { page: "dashboard", label: "Dashboard", glyph: "dashboard" },
   { page: "profile", label: "Profile", glyph: "profile" },
+  { page: "skins", label: "Skins", glyph: "skin" },
   { page: "activity", label: "Activity", glyph: "activity" },
   { page: "settings", label: "Settings", glyph: "settings" },
   { page: "diagnostics", label: "Diagnostics", glyph: "diagnostics" },
@@ -343,6 +356,330 @@ async function renderDiagnostics() {
   };
 }
 
+// ── Skins ────────────────────────────────────────────────────────────────────
+// Control panel for the skin-injection subsystem (S9): enable/settings,
+// League path, download w/ progress, injection settings, party. The
+// in-client chroma/forms picker itself is the bundled CHUD-* Pengu Loader
+// plugins, not this page — see docs/SKINS_PORT.md.
+const DEFAULT_SKINS_STATE = {
+  enabled: false, bridgePort: null, penguActive: false, skinsDownloaded: false, hashesReady: false,
+  leaguePath: "", injectionThresholdMs: 300, autoResumeSecs: 60, autoDownload: true,
+  party: { enabled: false, my_token: null, my_summoner_id: null, my_summoner_name: "Unknown", peers: [] },
+  diagnostics: { bridgePort: null, penguActive: false, toolsAvailable: false, dllValid: false, skinsDownloaded: false, hashesReady: false, dataDir: "" },
+};
+let skinsState = null;
+let skinsCfg = null; // local editable copy of the injection-settings fields (snake_case — mirrors config::SkinsCfg, like DEFAULT_CONFIG/cfg above)
+// Local-only risk gate for skin-injection actions, deliberately SEPARATE from
+// the dashboard's `injectionAck` (that's the Vanguard input-injection risk;
+// this is the "modifies game files & suspends the client" ToS risk) — see
+// this feature's fix notes. Not persisted server-side (no config.skins field
+// for it), so it resets per browser/profile; that's an acceptable trade for
+// keeping the ack purely a front-end concern.
+const SKINS_ACK_KEY = "chud_skins_ack";
+let skinsAck = false;
+try { skinsAck = localStorage.getItem(SKINS_ACK_KEY) === "1"; } catch { /* localStorage unavailable (e.g. sandboxed preview) */ }
+let skinsDownloadActive = false;
+let skinsPollTimer = null;
+
+async function loadSkinsState() {
+  skinsState = (await invoke("skins_get_state")) || structuredClone(DEFAULT_SKINS_STATE);
+  skinsCfg = {
+    league_path: skinsState.leaguePath || "",
+    injection_threshold_ms: skinsState.injectionThresholdMs,
+    monitor_auto_resume_timeout_secs: skinsState.autoResumeSecs,
+    auto_download_skins: !!skinsState.autoDownload,
+  };
+}
+
+function skinsRiskStrip() {
+  return `<div class="riskstrip">
+    <div class="hazard">${ico("warning")}</div>
+    <div class="grow">
+      <div class="risk-title">Skin injection risk — read before enabling</div>
+      <div class="risk-body">Injecting skins modifies local game files and briefly suspends the League client while the overlay loads. This is against Riot's Terms of Service and carries <b style="color:#ff92a4">account risk</b>. Use at your own discretion.</div>
+    </div>
+    <button class="btn danger sm" id="skinsAckBtn">I understand — unlock</button>
+  </div>`;
+}
+
+function skinsStatusRow(label, ok, okText, badText) {
+  const c = toneColor(ok ? "success" : "danger");
+  return `<div class="diag-row"><span class="diag-k">${esc(label)}</span><span class="diag-v" style="color:${c}">${esc(ok ? okText : badText)}</span></div>`;
+}
+
+function skinsStatusCard() {
+  const s = skinsState, d = s.diagnostics || {};
+  return `<div class="glass"><div class="diag-card-title"><span style="display:inline-flex;width:16px;height:16px;margin-right:8px;vertical-align:-3px;color:var(--magenta-soft)">${ico("diagnostics")}</span>Status</div>
+    <div class="diag-list">
+      ${skinsStatusRow("Client linked", state.clientOnline, "Connected", "Offline")}
+      ${skinsStatusRow("Bridge server", !!s.bridgePort, `Listening · 127.0.0.1:${s.bridgePort}`, "Not running")}
+      ${skinsStatusRow("Pengu Loader", s.penguActive, "Active", "Inactive")}
+      ${skinsStatusRow("Skins downloaded", s.skinsDownloaded, "Ready", "Not downloaded")}
+      ${skinsStatusRow("Game hashes", s.hashesReady, "Ready", "Not downloaded")}
+      ${skinsStatusRow("CSLOL tools", d.toolsAvailable, "Present", "Missing")}
+      ${skinsStatusRow("cslol-dll.dll", d.dllValid, "Verified", "Missing / unrecognized")}
+    </div></div>`;
+}
+
+function skinsSetupCard() {
+  const s = skinsState;
+  const lockedActivate = !skinsAck;
+  return `<div class="glass set-card">
+    <div class="set-card-title"><span class="ci">${ico("bolt")}</span>Setup</div>
+    <div class="set-list">
+      ${setField("League install path", "Folder containing League of Legends.exe — leave blank to auto-detect from the running client. Saved with Injection Settings below.",
+        `<span class="set-input-wrap"><input class="set-input" id="skinsLeaguePath" type="text" style="width:230px;text-align:left" value="${esc(s.leaguePath || "")}" placeholder="auto-detect"></span>`)}
+    </div>
+    <div class="row" style="margin-top:6px;flex-wrap:wrap;gap:10px">
+      <button class="btn sm primary" id="skinsDownloadBtn" ${skinsDownloadActive ? "disabled" : ""}>${skinsDownloadActive ? "Downloading…" : "Download skins"}</button>
+      <button class="btn sm" id="skinsActivateBtn" ${lockedActivate ? "disabled" : ""}>Activate Pengu Loader</button>
+    </div>
+    ${lockedActivate ? `<div class="mod-lock"><span style="width:13px;height:13px;display:inline-flex">${ico("warning")}</span>Acknowledge the risk above to unlock activation.</div>` : ""}
+    <div class="rc-bar" id="skinsProgressBar" style="margin-top:12px;${skinsDownloadActive ? "" : "display:none"}"><div class="rc-fill" id="skinsProgressFill" style="width:8%"></div></div>
+    <div class="dim mono" id="skinsDownloadHint" style="font-size:11px;margin-top:6px;${skinsDownloadActive ? "" : "display:none"}"></div>
+  </div>`;
+}
+
+const skinsNumInput = (key, unit, step) => `<span class="set-input-wrap"><input class="set-input" data-skey="${key}" type="number" step="${step || "any"}" value="${esc(skinsCfg[key])}">${unit ? `<span class="set-unit">${unit}</span>` : ""}</span>`;
+const skinsToggleCtl = (key) => `<div class="tog ${skinsCfg[key] ? "on" : ""}" data-skey="${key}"><div class="knob"></div></div>`;
+
+function skinsSettingsCard() {
+  return `<div class="glass set-card">
+    <div class="set-card-title"><span class="ci">${ico("settings")}</span>Injection Settings</div>
+    <div class="set-list">
+      ${setField("Injection threshold", "How close to the loadout deadline to inject", skinsNumInput("injection_threshold_ms", "ms", "1"))}
+      ${setField("Auto-resume timeout", "Never leave the client suspended longer than this", skinsNumInput("monitor_auto_resume_timeout_secs", "s"))}
+      ${setField("Auto-download skins", "Fetch new skins/hashes automatically on launch", skinsToggleCtl("auto_download_skins"))}
+    </div>
+    <div class="row" style="margin-top:4px"><button class="btn primary" id="skinsSaveCfg">Save settings</button><span class="dim mono" id="skinsSaveHint" style="font-size:11.5px"></span></div>
+  </div>`;
+}
+
+function skinsPartyCardInner() {
+  const p = skinsState.party || DEFAULT_SKINS_STATE.party;
+  const peers = p.peers || [];
+  const peerRows = peers.length
+    ? peers.map((pr) => `<div class="diag-row"><span class="diag-k">${esc(pr.summoner_name || "Unknown")}${pr.in_lobby ? " · in lobby" : ""}</span><span class="diag-v">${pr.skin_selection ? `Champion ${esc(pr.skin_selection.champion_id)} · Skin ${esc(pr.skin_selection.skin_id)}` : "No selection yet"}</span></div>`).join("")
+    : `<div class="dim" style="padding:10px 2px;font-size:12.5px">No peers connected yet. Share your token or paste a friend's below.</div>`;
+  return `
+    <div class="set-card-title"><span class="ci">${ico("profile")}</span>Party Mode</div>
+    <div class="set-list">
+      ${setField("Enable party mode", "Share your skin picks with your lobby in real time", `<div class="tog ${p.enabled ? "on" : ""}" id="skinsPartyToggle"><div class="knob"></div></div>`)}
+    </div>
+    ${p.enabled ? `
+    <div class="set-field" style="align-items:flex-start">
+      <div><div class="set-flabel">Your token</div><div class="set-fhint">Share this with a friend so they can join your party</div></div>
+      <div class="set-control" style="gap:8px">
+        <span class="set-input-wrap"><input class="set-input" id="skinsPartyToken" type="text" readonly style="width:220px;text-align:left" value="${esc(p.my_token || "")}"></span>
+        <button class="btn sm" id="skinsCopyToken"><span style="width:14px;height:14px;display:inline-flex">${ico("copy")}</span>Copy</button>
+      </div>
+    </div>
+    <div class="set-field" style="align-items:flex-start">
+      <div><div class="set-flabel">Join a friend's party</div><div class="set-fhint">Paste their token</div></div>
+      <div class="set-control" style="gap:8px">
+        <span class="set-input-wrap"><input class="set-input" id="skinsPeerToken" type="text" style="width:220px;text-align:left" placeholder="CHUD:..."></span>
+        <button class="btn sm primary" id="skinsAddPeer">Add peer</button>
+      </div>
+    </div>
+    <div class="diag-list" style="margin-top:6px">${peerRows}</div>
+    ` : ""}`;
+}
+function skinsPartyCard() {
+  return `<div class="glass set-card" id="skinsPartyCard">${skinsPartyCardInner()}</div>`;
+}
+
+async function renderSkins() {
+  const p = document.getElementById("page");
+  if (!skinsState) {
+    p.innerHTML = `<div class="glass"><div class="muted">Loading skins state…</div></div>`;
+    await loadSkinsState();
+  }
+  if (currentPage !== "skins") return; // navigated away while the await above was in flight
+  p.innerHTML = `<div class="set-wrap">
+    ${skinsAck ? "" : skinsRiskStrip()}
+    <div class="glass" style="display:flex;align-items:center;gap:16px">
+      <div class="grow">
+        <div class="set-card-title" style="margin-bottom:2px"><span class="ci">${ico("skin")}</span>Skin Injection</div>
+        <div class="dim" style="font-size:12px">Master switch — persists your preference; deeper gameflow gating is future work.</div>
+      </div>
+      <div class="tog ${skinsState.enabled ? "on" : ""} ${skinsAck ? "" : "disabled"}" ${skinsAck ? `data-skins-enable="1"` : ""}><div class="knob"></div></div>
+    </div>
+    <div class="diag-grid">${skinsStatusCard()}${skinsSetupCard()}</div>
+    ${skinsSettingsCard()}
+    ${skinsPartyCard()}
+  </div>`;
+  wireSkins();
+  startSkinsPoll();
+}
+
+function wireSkins() {
+  const ack = document.getElementById("skinsAckBtn");
+  if (ack) ack.onclick = () => { skinsAck = true; try { localStorage.setItem(SKINS_ACK_KEY, "1"); } catch { /* ignore */ } renderSkins(); };
+
+  const enableTog = document.querySelector("[data-skins-enable]");
+  if (enableTog) enableTog.onclick = async () => {
+    const fresh = await invoke("skins_set_enabled", { enabled: !skinsState.enabled });
+    if (fresh) skinsState = fresh; else skinsState.enabled = !skinsState.enabled;
+    renderSkins();
+  };
+
+  const pathInput = document.getElementById("skinsLeaguePath");
+  if (pathInput) pathInput.onchange = () => { skinsCfg.league_path = pathInput.value; };
+
+  const dlBtn = document.getElementById("skinsDownloadBtn");
+  if (dlBtn) dlBtn.onclick = onSkinsDownload;
+  const actBtn = document.getElementById("skinsActivateBtn");
+  if (actBtn) actBtn.onclick = onSkinsActivate;
+  const saveBtn = document.getElementById("skinsSaveCfg");
+  if (saveBtn) saveBtn.onclick = onSkinsSaveSettings;
+
+  document.querySelectorAll("#page [data-skey]").forEach((el) => {
+    if (el.tagName === "INPUT") {
+      el.onchange = () => {
+        const v = parseFloat(el.value);
+        if (Number.isFinite(v)) skinsCfg[el.dataset.skey] = v; else el.value = skinsCfg[el.dataset.skey];
+      };
+    } else {
+      el.onclick = () => { skinsCfg[el.dataset.skey] = !skinsCfg[el.dataset.skey]; el.classList.toggle("on", skinsCfg[el.dataset.skey]); };
+    }
+  });
+
+  wirePartyControls();
+}
+
+function wirePartyControls() {
+  const tog = document.getElementById("skinsPartyToggle");
+  if (tog) tog.onclick = onSkinsPartyToggle;
+  const copyBtn = document.getElementById("skinsCopyToken");
+  if (copyBtn) copyBtn.onclick = async () => {
+    try {
+      await navigator.clipboard.writeText((skinsState.party && skinsState.party.my_token) || "");
+      copyBtn.querySelector("svg") ? copyBtn.lastChild.textContent = "Copied!" : (copyBtn.textContent = "Copied!");
+    } catch { toast("Copy failed", "", "danger"); }
+  };
+  const addBtn = document.getElementById("skinsAddPeer");
+  if (addBtn) addBtn.onclick = onSkinsAddPeer;
+}
+
+function refreshPartyCard() {
+  const card = document.getElementById("skinsPartyCard");
+  if (card) { card.innerHTML = skinsPartyCardInner(); wirePartyControls(); }
+}
+
+async function onSkinsDownload() {
+  if (skinsDownloadActive) return;
+  skinsDownloadActive = true;
+  if (currentPage === "skins") renderSkins();
+  if (!TAURI) {
+    setTimeout(() => {
+      skinsDownloadActive = false; skinsState.skinsDownloaded = true; skinsState.hashesReady = true;
+      toast("Skins downloaded", "(preview mode — no backend)", "success");
+      if (currentPage === "skins") renderSkins();
+    }, 900);
+    return;
+  }
+  await invoke("skins_download", { force: false });
+  // Real progress/completion arrive via skins-download-progress/-done events.
+}
+
+function onSkinsDownloadProgress(payload) {
+  if (!payload) return;
+  const pct = payload.total ? Math.min(100, Math.round((payload.done / payload.total) * 100)) : null;
+  const fill = document.getElementById("skinsProgressFill");
+  if (fill) fill.style.width = (pct ?? 8) + "%";
+  const hint = document.getElementById("skinsDownloadHint");
+  if (hint) hint.textContent = `${payload.phase === "hashes" ? "Downloading game hashes" : "Downloading skins"}${pct !== null ? ` · ${pct}%` : "…"}`;
+}
+async function onSkinsDownloadDone(payload) {
+  skinsDownloadActive = false;
+  if (payload && payload.ok) toast("Skins ready", "Skins and hashes are up to date.", "success");
+  else toast("Download failed", (payload && payload.error) || "Unknown error", "danger");
+  await loadSkinsState();
+  if (currentPage === "skins") renderSkins();
+}
+
+// `skins_activate_pengu`/`skins_party_*` return `Result<_, String>` on the
+// Rust side — shared.js's `invoke` swallows the error text (by design, see
+// shared.js), so these call `TAURI.invoke` directly to surface the real
+// reason in the toast.
+async function onSkinsActivate() {
+  if (!skinsAck) return;
+  const btn = document.getElementById("skinsActivateBtn");
+  if (btn) btn.disabled = true;
+  try {
+    if (TAURI) {
+      await TAURI.invoke("skins_activate_pengu");
+      toast("Pengu Loader activated", "League will restart if it's running.", "success");
+    } else {
+      toast("Pengu Loader activated", "(preview mode — no backend)", "success");
+    }
+  } catch (e) {
+    toast("Activation failed", String(e || "Could not activate Pengu Loader."), "danger");
+  }
+  if (btn) btn.disabled = false;
+  await loadSkinsState();
+  if (currentPage === "skins") renderSkins();
+}
+
+async function onSkinsSaveSettings() {
+  const fresh = await invoke("skins_save_settings", { settings: skinsCfg });
+  if (fresh) {
+    skinsState = fresh;
+    skinsCfg = {
+      league_path: skinsState.leaguePath || "",
+      injection_threshold_ms: skinsState.injectionThresholdMs,
+      monitor_auto_resume_timeout_secs: skinsState.autoResumeSecs,
+      auto_download_skins: !!skinsState.autoDownload,
+    };
+  }
+  const h = document.getElementById("skinsSaveHint");
+  if (h) { h.textContent = "Saved ✓"; setTimeout(() => { if (h) h.textContent = ""; }, 1800); }
+  toast("Skins settings saved", "Configuration written to disk.", "success");
+}
+
+async function onSkinsPartyToggle() {
+  const enabling = !(skinsState.party && skinsState.party.enabled);
+  try {
+    if (TAURI) {
+      skinsState.party = enabling ? await TAURI.invoke("skins_party_enable") : await TAURI.invoke("skins_party_disable");
+    } else {
+      skinsState.party = { enabled: enabling, my_token: enabling ? "CHUD:preview-token" : null, my_summoner_id: null, my_summoner_name: "Unknown", peers: [] };
+    }
+    toast(enabling ? "Party mode enabled" : "Party mode disabled", "", enabling ? "success" : "info");
+  } catch (e) {
+    toast("Party mode error", String(e || "Failed to toggle party mode."), "danger");
+  }
+  if (currentPage === "skins") refreshPartyCard();
+}
+
+async function onSkinsAddPeer() {
+  const input = document.getElementById("skinsPeerToken");
+  const value = input ? input.value.trim() : "";
+  if (!value) return;
+  try {
+    if (TAURI) {
+      skinsState.party = await TAURI.invoke("skins_party_add_peer", { token: value });
+    }
+    toast("Peer added", "", "success");
+  } catch (e) {
+    toast("Could not add peer", String(e || "Invalid token."), "danger");
+  }
+  if (input) input.value = "";
+  if (currentPage === "skins") refreshPartyCard();
+}
+
+// While the Skins page is open, poll the party state (no push event reaches
+// this webview — see the file-header IPC contract note).
+function startSkinsPoll() {
+  stopSkinsPoll();
+  skinsPollTimer = setInterval(async () => {
+    if (currentPage !== "skins") { stopSkinsPoll(); return; }
+    const fresh = await invoke("skins_party_get_state");
+    if (fresh) { skinsState.party = fresh; refreshPartyCard(); }
+  }, 3000);
+}
+function stopSkinsPoll() { if (skinsPollTimer) { clearInterval(skinsPollTimer); skinsPollTimer = null; } }
+
 // ── Toasts ──────────────────────────────────────────────────────────────────
 function toast(title, message, tone = "info") {
   const wrap = document.getElementById("toasts");
@@ -380,11 +717,15 @@ function renderPage() {
   if (currentPage === "dashboard") { page.innerHTML = dashboardHtml(); wireDash(); }
   else if (currentPage === "settings") { renderSettings(); }
   else if (currentPage === "profile") { window.renderProfile?.(page); }
+  else if (currentPage === "skins") { renderSkins(); }
   else if (currentPage === "activity") { renderActivity(); }
   else if (currentPage === "diagnostics") { renderDiagnostics(); }
   else { page.innerHTML = `<div class="glass"><div class="muted">${esc(NAV.find((n) => n.page === currentPage)?.label || "")} — coming soon.</div></div>`; }
 }
-function navTo(page) { currentPage = page; renderNav(); renderTop(); renderPage(); }
+function navTo(page) {
+  if (currentPage === "skins" && page !== "skins") stopSkinsPoll();
+  currentPage = page; renderNav(); renderTop(); renderPage();
+}
 
 function onStateChanged() {
   renderTop(); syncReadyCheck();
@@ -452,6 +793,8 @@ async function boot() {
   if (ev) {
     ev.listen("state-changed", (e) => { if (e && e.payload) { const prev = state; state = e.payload; recordActivity(prev, state); onStateChanged(); } });
     ev.listen("notification", (e) => { const n = e?.payload; if (n) toast(n.title || "Chud", n.message || n.msg || "", n.tone || "info"); });
+    ev.listen("skins-download-progress", (e) => { if (currentPage === "skins") onSkinsDownloadProgress(e?.payload); });
+    ev.listen("skins-download-done", (e) => { onSkinsDownloadDone(e?.payload); });
   }
 }
 boot();

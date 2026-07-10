@@ -427,6 +427,14 @@ pub fn cleanup_if_dirty() -> bool {
     deactivated
 }
 
+/// Whether Pengu Loader is currently marked active — i.e. the flag file
+/// `activate_on_start` writes and `deactivate_on_exit` clears still exists.
+/// Used by the Skins control panel (S9) to show real activation status
+/// without shelling out to the CLI.
+pub fn is_active() -> bool {
+    active_flag_path().exists()
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
