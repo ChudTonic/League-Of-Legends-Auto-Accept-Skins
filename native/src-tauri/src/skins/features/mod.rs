@@ -4,4 +4,7 @@
 
 #![allow(dead_code)] // consumed by S4+
 
+pub mod chroma;
+pub mod historic;
+pub mod random;
 pub mod special;

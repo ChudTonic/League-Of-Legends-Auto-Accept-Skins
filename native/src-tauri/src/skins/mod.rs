@@ -6,10 +6,20 @@
 
 #![allow(dead_code)] // consumed by S2+
 
+pub mod bridge;
+pub mod downloads;
 pub mod features;
+pub mod injection;
+pub mod lcu_ext;
+pub mod party;
 pub mod paths;
+pub mod pengu;
+pub mod phase;
 pub mod slog;
 pub mod state;
+pub mod swiftplay;
+pub mod ticker;
+pub mod trigger;
 
 use std::sync::atomic::AtomicU64;
 use std::sync::Mutex;
