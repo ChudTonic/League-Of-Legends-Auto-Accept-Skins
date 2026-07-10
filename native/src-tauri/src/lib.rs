@@ -53,6 +53,13 @@ pub struct AppState {
     pub camera_gen: AtomicU64,
     pub auto_accept_gen: AtomicU64,
     pub config_gen: AtomicU64,         // bumped on save so running loops live-reload settings
+    /// Skins subsystem shared state (S2+) — see `docs/SKINS_PORT.md`.
+    pub skins: Arc<skins::SkinsState>,
+    /// The phase actor's handle, set once during `setup()`. `lcu_ws.rs`
+    /// reads `input_tx` to fan events into it; later milestones (bridge S4,
+    /// ticker S5) will read `events` to subscribe. `None` only in the brief
+    /// window before `setup()` spawns it.
+    pub skins_phase: Mutex<Option<skins::phase::PhaseHandle>>,
 }
 
 /// Mutex helper that ignores poisoning. A panic while holding a lock must not
@@ -481,6 +488,8 @@ pub fn run() {
         camera_gen: AtomicU64::new(0),
         auto_accept_gen: AtomicU64::new(0),
         config_gen: AtomicU64::new(0),
+        skins: Arc::new(skins::SkinsState::new()),
+        skins_phase: Mutex::new(None),
     });
 
     tauri::Builder::default()
@@ -523,7 +532,14 @@ pub fn run() {
             let handle = app.handle().clone();
             let st = app.state::<Arc<AppState>>().inner().clone();
             st.running.store(true, Ordering::SeqCst);
-            spawn_auto_accept(&handle, st);
+            spawn_auto_accept(&handle, st.clone());
+
+            // Skins phase engine (S2): always spawned — it just idles (poll
+            // fallback finds no LCU auth, WS fan-out has nothing to send)
+            // when the skins subsystem has no client to watch. Cheaper than
+            // gating on a not-yet-existent settings flag and respawning later.
+            let phase_handle = skins::phase::spawn(handle.clone(), st.skins.clone());
+            *st.skins_phase.lock_safe() = Some(phase_handle);
 
             // No in-game hotkeys by design: the tools are armed/disarmed from
             // the dashboard only and stay always-on while armed, so an
