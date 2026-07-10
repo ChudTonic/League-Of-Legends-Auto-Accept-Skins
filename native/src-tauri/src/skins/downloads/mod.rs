@@ -229,7 +229,9 @@ pub async fn download_skins_on_startup(
 /// that class (tray-icon status management) is dropped per
 /// `docs/SKINS_PORT.md` §0; only the "does a champion/skin folder with
 /// actual content exist" question survives, to decide full vs. incremental.
-fn skins_present(skins_dir: &Path) -> bool {
+/// `pub` since S9's `skins_get_state`/`skins_diagnostics` commands reuse this
+/// exact check for the Skins page's "skins downloaded" status chip.
+pub fn skins_present(skins_dir: &Path) -> bool {
     let Ok(entries) = std::fs::read_dir(skins_dir) else { return false };
     for entry in entries.flatten() {
         if !entry.path().is_dir() {
