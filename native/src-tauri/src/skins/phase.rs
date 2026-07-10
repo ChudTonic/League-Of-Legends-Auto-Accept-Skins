@@ -158,7 +158,6 @@ async fn run(
     events: broadcast::Sender<PhaseEvent>,
     generation: u64,
 ) {
-    let _ = &app; // reserved for later milestones (JS event emission); no direct use yet.
     let mut last_phase: Option<String> = None;
     let mut null_streak: u32 = 0;
     let mut disconnected = false;
@@ -180,7 +179,7 @@ async fn run(
                 match maybe_input {
                     Some(input) => {
                         handle_input(
-                            &skins, &client, &events, input,
+                            &app, &skins, &client, &events, input,
                             &mut last_phase, &mut null_streak, &mut disconnected,
                             &mut last_locked_champion_id, &mut scraper_cache,
                         ).await;
@@ -191,7 +190,7 @@ async fn run(
             _ = poll_timer.tick() => {
                 let raw = poll_phase(&client).await;
                 handle_input(
-                    &skins, &client, &events, PhaseInput::Phase(raw),
+                    &app, &skins, &client, &events, PhaseInput::Phase(raw),
                     &mut last_phase, &mut null_streak, &mut disconnected,
                     &mut last_locked_champion_id, &mut scraper_cache,
                 ).await;
@@ -207,6 +206,7 @@ async fn poll_phase(client: &reqwest::Client) -> Option<String> {
 
 #[allow(clippy::too_many_arguments)]
 async fn handle_input(
+    app: &AppHandle,
     skins: &Arc<SkinsState>,
     client: &reqwest::Client,
     events: &broadcast::Sender<PhaseEvent>,
@@ -219,7 +219,7 @@ async fn handle_input(
 ) {
     match input {
         PhaseInput::Phase(raw) => {
-            process_phase_observation(skins, client, events, raw, last_phase, null_streak, disconnected).await;
+            process_phase_observation(app, skins, client, events, raw, last_phase, null_streak, disconnected).await;
         }
         PhaseInput::HoveredChampion(cid) => {
             let mut shared = skins.shared.lock_safe();
@@ -235,7 +235,9 @@ async fn handle_input(
 
 /// De-duplicates same-phase observations from both the WS fan-out and the
 /// poll fallback (`ph != last_phase`) and drives the disconnect debounce.
+#[allow(clippy::too_many_arguments)]
 async fn process_phase_observation(
+    app: &AppHandle,
     skins: &Arc<SkinsState>,
     client: &reqwest::Client,
     events: &broadcast::Sender<PhaseEvent>,
@@ -288,15 +290,40 @@ async fn process_phase_observation(
     }
 
     match &phase {
-        Phase::ChampSelect => champ_select_entry(skins, client, events).await,
+        Phase::ChampSelect => champ_select_entry(app, skins, client, events).await,
         Phase::Other(s) if s == "FINALIZATION" => {
             log_info!("[phase] Entering FINALIZATION");
             let _ = events.send(PhaseEvent::Finalization);
+
+            // S5: start the loadout ticker. `ticker::TimerManager::maybe_start_timer`
+            // needs the raw champ-select session JSON (its `timer` sub-object
+            // isn't modeled on `lcu_ext::SessionData` — out of this
+            // milestone's file scope to add), so it's fetched here rather
+            // than inside `ticker.rs`.
+            if let Some(auth) = lcu::cached_auth() {
+                if let Some(session) =
+                    lcu_ext::shared_cache().get(client, &auth, "/lol-champ-select/v1/session", lcu_ext::DEFAULT_CACHE_TTL).await
+                {
+                    crate::skins::ticker::TimerManager::maybe_start_timer(app.clone(), Arc::clone(skins), &session).await;
+                }
+            }
         }
         Phase::InProgress => {
             // Logging only in the Python original (`_handle_in_progress_entry`);
             // UI/overlay teardown is S3/S4 territory (bridge + injection).
             log_info!("[phase] InProgress");
+        }
+        Phase::Matchmaking => {
+            phase_exit_reset(skins);
+            crate::skins::swiftplay::on_matchmaking_started(app.clone(), Arc::clone(skins)).await;
+        }
+        Phase::GameStart => {
+            phase_exit_reset(skins);
+            crate::skins::swiftplay::on_game_start(app.clone(), Arc::clone(skins)).await;
+        }
+        Phase::Lobby => {
+            phase_exit_reset(skins);
+            crate::skins::swiftplay::on_lobby_entered(app.clone(), Arc::clone(skins)).await;
         }
         _ => phase_exit_reset(skins),
     }
@@ -326,7 +353,38 @@ fn phase_exit_reset(skins: &Arc<SkinsState>) {
 /// reload — consolidates `champ_select_reset.py::perform_champ_select_reset`
 /// + `game_mode_detector.py::detect_game_mode`, called from exactly one
 /// place regardless of which source (WS or poll) observed the transition.
-async fn champ_select_entry(skins: &Arc<SkinsState>, client: &reqwest::Client, events: &broadcast::Sender<PhaseEvent>) {
+///
+/// S5 fix (`docs/SKINS_PORT.md`'s open reconciliation item "Swiftplay skips
+/// champ-select reset not honored"): Swiftplay locks the player's champion in
+/// the LOBBY, before ChampSelect even starts. Running the normal per-game
+/// reset here (which clears `locked_champ_id`/`own_champion_locked`/etc.)
+/// would wipe that lock every time. Ported from
+/// `websocket_event_handler.py`'s `ph == "ChampSelect"` branch, which
+/// detects game mode FIRST specifically so it can decide whether to run the
+/// normal reset or the Swiftplay branch instead.
+async fn champ_select_entry(app: &AppHandle, skins: &Arc<SkinsState>, client: &reqwest::Client, events: &broadcast::Sender<PhaseEvent>) {
+    let mode = match lcu::cached_auth() {
+        Some(auth) => Some(lcu_ext::detect_game_mode(client, &auth).await),
+        None => None,
+    };
+    let is_swiftplay = mode.as_ref().is_some_and(|m| m.is_swiftplay);
+
+    if is_swiftplay {
+        {
+            let mut shared = skins.shared.lock_safe();
+            if let Some(m) = &mode {
+                shared.current_game_mode = m.game_mode.clone();
+                shared.current_map_id = m.map_id;
+                shared.current_queue_id = m.queue_id;
+            }
+            shared.is_swiftplay_mode = true;
+        }
+        log_info!("[phase] ChampSelect in Swiftplay mode - skipping normal per-game reset");
+        crate::skins::swiftplay::on_champ_select_in_swiftplay(app.clone(), Arc::clone(skins));
+        let _ = events.send(PhaseEvent::ChampSelectEntered);
+        return;
+    }
+
     let did_reset = {
         let mut shared = skins.shared.lock_safe();
         shared.reset_for_champ_select()
@@ -345,13 +403,13 @@ async fn champ_select_entry(skins: &Arc<SkinsState>, client: &reqwest::Client, e
         } else {
             log_warn!("[phase] Failed to load owned skins from LCU inventory");
         }
-
-        let mode = lcu_ext::detect_game_mode(client, &auth).await;
+    }
+    if let Some(m) = mode {
         let mut shared = skins.shared.lock_safe();
-        shared.current_game_mode = mode.game_mode;
-        shared.current_map_id = mode.map_id;
-        shared.current_queue_id = mode.queue_id;
-        shared.is_swiftplay_mode = mode.is_swiftplay;
+        shared.current_game_mode = m.game_mode;
+        shared.current_map_id = m.map_id;
+        shared.current_queue_id = m.queue_id;
+        shared.is_swiftplay_mode = m.is_swiftplay;
     }
 
     let _ = events.send(PhaseEvent::ChampSelectEntered);

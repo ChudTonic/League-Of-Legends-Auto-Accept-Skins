@@ -70,6 +70,12 @@ pub struct AppState {
     /// trigger pull it from here (via the app handle) to run an injection at
     /// the loadout deadline. `None` only before `setup()` builds it.
     pub skins_injection: Mutex<Option<Arc<skins::injection::InjectionManager>>>,
+    /// The party mode manager (S6), set once during `setup()` — after the
+    /// bridge, since it holds a `BridgeHandle` clone to push `party-state`
+    /// updates proactively (see `skins::party::manager::PartyManager`).
+    /// `bridge::handlers`'s party-* handlers pull it from here. `None` only
+    /// in the brief window before `setup()` builds it.
+    pub skins_party: Mutex<Option<Arc<skins::party::manager::PartyManager>>>,
 }
 
 /// Mutex helper that ignores poisoning. A panic while holding a lock must not
@@ -502,6 +508,7 @@ pub fn run() {
         skins_phase: Mutex::new(None),
         skins_bridge: Mutex::new(None),
         skins_injection: Mutex::new(None),
+        skins_party: Mutex::new(None),
     });
 
     tauri::Builder::default()
@@ -574,10 +581,17 @@ pub fn run() {
                 injection_manager.clone(),
                 &phase_handle,
             );
-            *st.skins_bridge.lock_safe() = Some(bridge_handle);
+            *st.skins_bridge.lock_safe() = Some(bridge_handle.clone());
             // Stash the injection manager so S5's ticker/trigger can pull it
             // from the app handle at the loadout deadline.
             *st.skins_injection.lock_safe() = Some(injection_manager);
+
+            // Party mode manager (S6): built after the bridge so it can hold
+            // a `BridgeHandle` clone to push `party-state` updates the
+            // moment the relay's member list changes, not just on request
+            // (see `PartyManager::handle_members_update`).
+            let party_manager = skins::party::manager::PartyManager::new(&handle, st.skins.clone(), bridge_handle);
+            *st.skins_party.lock_safe() = Some(party_manager);
 
             *st.skins_phase.lock_safe() = Some(phase_handle);
 

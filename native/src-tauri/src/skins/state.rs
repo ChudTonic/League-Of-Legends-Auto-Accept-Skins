@@ -29,6 +29,35 @@ pub struct CustomModSelection {
     pub relative_path: String,
 }
 
+/// One extracted-and-ready non-skin mod selection (map/font/announcer/other)
+/// — mirrors Python's `selected_map_mod`/`selected_font_mod`/
+/// `selected_announcer_mod`/`selected_other_mods` dict shapes.
+///
+/// MIGRATED (S5) from `bridge::ModSelection`/`ModSelections`: S4's own doc
+/// comment flagged that those belonged here but `state.rs` wasn't in S4's
+/// file scope. `state.rs` is S5's to edit, so the fields land here now.
+/// `bridge::BridgeContext::mod_selections` (written by `bridge/handlers.rs`,
+/// S6 territory this round) still exists and is NOT wired to this field yet
+/// — see the `TODO(seam)` comments in `trigger.rs` at every read site; a
+/// follow-up must make `bridge/handlers.rs` write here instead (or in
+/// addition) so a bridge-driven category-mod selection is visible to the
+/// injection trigger.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub struct CategoryModSelection {
+    pub mod_name: String,
+    pub mod_path: String,
+    pub mod_folder_name: String,
+    pub relative_path: String,
+}
+
+#[derive(Debug, Clone, Default, PartialEq, Eq)]
+pub struct CategoryModSelections {
+    pub map: Option<CategoryModSelection>,
+    pub font: Option<CategoryModSelection>,
+    pub announcer: Option<CategoryModSelection>,
+    pub others: Vec<CategoryModSelection>,
+}
+
 #[derive(Debug, Clone)]
 pub struct SkinsShared {
     // ---- Phase / champ-select ----
@@ -140,6 +169,15 @@ pub struct SkinsShared {
     // ---- Custom mod selection ----
     pub selected_custom_mod: Option<CustomModSelection>,
 
+    // ---- Category mod selections (map/font/announcer/other) ----
+    /// See `CategoryModSelections`'s doc comment for the S5 migration note.
+    /// Persists across games like Python's originals (`selected_map_mod`
+    /// etc. are NOT cleared by `reset_for_champ_select` — see its doc
+    /// comment / injection_trigger.py's "Keep mod selections in state so
+    /// they persist across games" comment) — deliberately not touched by
+    /// either reset function below.
+    pub category_mods: CategoryModSelections,
+
     // ---- Party mode (P2P skin sharing with friends) ----
     pub party_mode_enabled: bool,
     pub party_token: Option<String>,
@@ -215,6 +253,8 @@ impl Default for SkinsShared {
             own_champion_locked: false,
 
             selected_custom_mod: None,
+
+            category_mods: CategoryModSelections::default(),
 
             party_mode_enabled: false,
             party_token: None,

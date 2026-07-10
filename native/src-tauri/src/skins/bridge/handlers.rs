@@ -4,9 +4,11 @@
 //! targeted reply — see `ws.rs`'s doc comment on the broadcast-only
 //! contract).
 //!
-//! Party mode (`party-*`) is S6 — those handlers are clearly-marked stubs
-//! that answer with a disabled/failure shape and log a note; nothing here
-//! blocks waiting on party infrastructure.
+//! Party mode (`party-*`) is S6: these handlers call into the real
+//! `skins::party::manager::PartyManager` (pulled from `AppState::
+//! skins_party`, set once in `lib.rs`'s `setup()`) rather than reimplementing
+//! any party logic here — see `handlers::party_manager` and the handlers
+//! below it.
 //!
 //! A few Python collaborators this file would otherwise call into were never
 //! ported to Rust and are out of this milestone's file scope to create
@@ -122,10 +124,10 @@ async fn route(ctx: &BridgeContext, msg: InboundMessage) {
         InboundMessage::FindMatchHover { .. } => handle_find_match_hover(ctx).await,
         InboundMessage::DismissCustomMod {} => handle_dismiss_custom_mod(ctx),
         InboundMessage::DismissHistoric {} => handle_dismiss_historic(ctx),
-        InboundMessage::PartyEnable {} => handle_party_enable(ctx),
-        InboundMessage::PartyDisable {} => handle_party_disable(ctx),
-        InboundMessage::PartyAddPeer { .. } => handle_party_add_peer(ctx),
-        InboundMessage::PartyRemovePeer { .. } => handle_party_remove_peer(),
+        InboundMessage::PartyEnable {} => handle_party_enable(ctx).await,
+        InboundMessage::PartyDisable {} => handle_party_disable(ctx).await,
+        InboundMessage::PartyAddPeer { token } => handle_party_add_peer(ctx, token).await,
+        InboundMessage::PartyRemovePeer { summoner_id } => handle_party_remove_peer(ctx, summoner_id),
         InboundMessage::PartyGetState {} => handle_party_get_state(ctx),
     }
 }
@@ -1380,32 +1382,94 @@ fn handle_diagnostics_apply_recommended(ctx: &BridgeContext) {
 }
 
 // ---------------------------------------------------------------------
-// Party mode — S6 stub seam. Every handler answers immediately (never
-// blocks) with a disabled/failure shape and logs that party mode isn't
-// wired yet; S6 replaces these bodies with real `PartyManager` calls.
+// Party mode (S6) — real `PartyManager` calls, pulled from `AppState::
+// skins_party` (set once in `lib.rs`'s `setup()`, after the bridge). Every
+// handler answers via the same message shapes `party/integration/ui_bridge.py`
+// used (`party-enabled`/`party-disabled`/`party-peer-added`/
+// `party-peer-removed`); `PartyManager` itself pushes `party-state`
+// proactively (on enable/disable/add-peer/remove-peer and whenever the
+// relay's member list changes) — see `PartyManager::broadcast_state`.
 // ---------------------------------------------------------------------
 
-fn handle_party_enable(ctx: &BridgeContext) {
-    log_info!("[bridge] party-enable received - party mode not yet wired (S6)");
-    ctx.handle.broadcast_json(json!({"type": "party-enabled", "success": false, "error": "Party mode is not available yet"}));
+/// Pull the party manager out of `AppState`, if `setup()` has built it yet.
+fn party_manager(ctx: &BridgeContext) -> Option<std::sync::Arc<crate::skins::party::manager::PartyManager>> {
+    let app_state = ctx.app.state::<std::sync::Arc<crate::AppState>>();
+    let manager = app_state.skins_party.lock_safe().clone();
+    manager
 }
 
-fn handle_party_disable(ctx: &BridgeContext) {
-    log_info!("[bridge] party-disable received - party mode not yet wired (S6)");
+async fn handle_party_enable(ctx: &BridgeContext) {
+    let Some(manager) = party_manager(ctx) else {
+        log_warn!("[bridge] party-enable: PartyManager not initialized");
+        ctx.handle.broadcast_json(json!({"type": "party-enabled", "success": false, "error": "Party mode is not available yet"}));
+        return;
+    };
+    match manager.enable().await {
+        Ok(token) => {
+            log_info!("[bridge] Party mode enabled");
+            ctx.handle.broadcast_json(json!({"type": "party-enabled", "success": true, "token": token}));
+        }
+        Err(e) => {
+            log_warn!("[bridge] party-enable failed: {e}");
+            ctx.handle.broadcast_json(json!({"type": "party-enabled", "success": false, "error": e}));
+        }
+    }
+}
+
+async fn handle_party_disable(ctx: &BridgeContext) {
+    if let Some(manager) = party_manager(ctx) {
+        manager.disable().await;
+    }
+    log_info!("[bridge] Party mode disabled");
     ctx.handle.broadcast_json(json!({"type": "party-disabled", "success": true}));
 }
 
-fn handle_party_add_peer(ctx: &BridgeContext) {
-    log_info!("[bridge] party-add-peer received - party mode not yet wired (S6)");
-    ctx.handle.broadcast_json(json!({"type": "party-peer-added", "success": false, "error": "Party mode is not available yet"}));
+async fn handle_party_add_peer(ctx: &BridgeContext, token: Option<String>) {
+    let Some(token) = token.filter(|t| !t.is_empty()) else {
+        ctx.handle.broadcast_json(json!({"type": "party-peer-added", "success": false, "error": "No token provided"}));
+        return;
+    };
+    let Some(manager) = party_manager(ctx) else {
+        ctx.handle.broadcast_json(json!({"type": "party-peer-added", "success": false, "error": "Party mode is not available yet"}));
+        return;
+    };
+    match manager.add_peer(&token).await {
+        Ok(()) => {
+            log_info!("[bridge] Party peer added");
+            ctx.handle.broadcast_json(json!({"type": "party-peer-added", "success": true, "error": Value::Null}));
+        }
+        Err(e) => {
+            log_warn!("[bridge] party-add-peer failed: {e}");
+            ctx.handle.broadcast_json(json!({"type": "party-peer-added", "success": false, "error": e}));
+        }
+    }
 }
 
-fn handle_party_remove_peer() {
-    log_info!("[bridge] party-remove-peer received - party mode not yet wired (S6)");
+/// Wire field is literally `summoner_id` (snake_case, not camelCase) in the
+/// Python original's payload — see `InboundMessage::PartyRemovePeer`'s own
+/// doc comment; it arrives as a generic `Value` since the JS side doesn't
+/// consistently send it as a JSON number.
+fn handle_party_remove_peer(ctx: &BridgeContext, summoner_id: Option<Value>) {
+    let Some(summoner_id) = summoner_id.and_then(|v| v.as_i64().or_else(|| v.as_str().and_then(|s| s.parse().ok()))) else {
+        log_warn!("[bridge] party-remove-peer: missing/invalid summoner_id");
+        return;
+    };
+    if let Some(manager) = party_manager(ctx) {
+        manager.remove_peer(summoner_id as u64);
+    }
+    log_info!("[bridge] Party peer removed: {summoner_id}");
+    ctx.handle.broadcast_json(json!({"type": "party-peer-removed", "success": true, "summoner_id": summoner_id}));
 }
 
 fn handle_party_get_state(ctx: &BridgeContext) {
-    ctx.handle.broadcast_party_state_disabled();
+    let Some(manager) = party_manager(ctx) else {
+        ctx.handle.broadcast_party_state_disabled();
+        return;
+    };
+    let mut state = manager.get_state();
+    state["type"] = json!("party-state");
+    state["timestamp"] = json!(protocol::now_ms());
+    ctx.handle.broadcast_json(state);
 }
 
 #[cfg(test)]
