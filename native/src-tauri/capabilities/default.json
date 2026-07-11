@@ -3,5 +3,5 @@
   "identifier": "default",
   "description": "Core IPC access for the main window so the WebView can call the app's commands.",
   "windows": ["main"],
-  "permissions": ["core:default"]
+  "permissions": ["core:default", "updater:default"]
 }

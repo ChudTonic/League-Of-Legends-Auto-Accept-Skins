@@ -707,6 +707,34 @@ fn skins_party_get_state(state: tauri::State<Arc<AppState>>) -> serde_json::Valu
     }
 }
 
+/// Silently check GitHub Releases for a signed newer version, install it, and
+/// relaunch. Best-effort — any error just logs and the current version keeps
+/// running. This is what lets users stop swapping the exe by hand.
+async fn run_startup_update(app: AppHandle) {
+    use tauri_plugin_updater::UpdaterExt;
+    let updater = match app.updater() {
+        Ok(u) => u,
+        Err(e) => {
+            eprintln!("[update] updater unavailable: {e}");
+            return;
+        }
+    };
+    match updater.check().await {
+        Ok(Some(update)) => {
+            eprintln!("[update] newer version {} found - installing", update.version);
+            match update.download_and_install(|_downloaded, _total| {}, || {}).await {
+                Ok(()) => {
+                    eprintln!("[update] installed - relaunching");
+                    app.restart();
+                }
+                Err(e) => eprintln!("[update] install failed: {e}"),
+            }
+        }
+        Ok(None) => eprintln!("[update] already up to date"),
+        Err(e) => eprintln!("[update] check failed: {e}"),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Skins subsystem foundation (data-dir tree + file logger). Non-fatal:
@@ -746,6 +774,7 @@ pub fn run() {
     });
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_updater::Builder::new().build())
         .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
             // Second launch -> focus the existing window.
             if let Some(w) = app.get_webview_window("main") {
@@ -796,6 +825,16 @@ pub fn run() {
             let st = app.state::<Arc<AppState>>().inner().clone();
             st.running.store(true, Ordering::SeqCst);
             spawn_auto_accept(&handle, st.clone());
+
+            // Auto-update: on startup, silently check GitHub Releases for a
+            // signed newer version, install it, and relaunch. This is what lets
+            // users (e.g. a friend/family member) stop swapping the exe by hand.
+            // Best-effort: any failure just logs and the app runs the current
+            // version. `cfg!(debug_assertions)` skips it in dev builds.
+            if !cfg!(debug_assertions) {
+                let update_handle = handle.clone();
+                tauri::async_runtime::spawn(async move { run_startup_update(update_handle).await });
+            }
 
             // Skins phase engine (S2): always spawned — it just idles (poll
             // fallback finds no LCU auth, WS fan-out has nothing to send)

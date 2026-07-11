@@ -72,6 +72,34 @@ pub fn cslol_tools_dir() -> PathBuf {
     resources_root().join("cslol-tools")
 }
 
+/// Keep `cslol-dll.dll` present next to the bundled `mod-tools.exe` across app
+/// updates. The DLL is DMCA-sensitive (never bundled or distributed), so it
+/// lives persistently in the user-data dir (`%LOCALAPPDATA%\Chud\cslol-tools`)
+/// and is restored next to `mod-tools.exe` on each startup — an installer
+/// update replaces the install (and its cslol-tools) but never touches
+/// user-data. Also migrates a DLL that only exists in the install (e.g. from an
+/// older zip build) into user-data so it survives the next update. Call once at
+/// startup; all failures are silent (injection's own hash gate reports a
+/// missing/invalid DLL).
+pub fn ensure_cslol_dll() {
+    let install = cslol_tools_dir().join("cslol-dll.dll");
+    let persistent_dir = crate::skins::paths::data_root().join("cslol-tools");
+    let persistent = persistent_dir.join("cslol-dll.dll");
+    let _ = std::fs::create_dir_all(&persistent_dir);
+
+    // Migrate an install-only DLL (old zip build) into persistent user-data.
+    if !persistent.exists() && install.exists() {
+        let _ = std::fs::copy(&install, &persistent);
+    }
+    // Restore the DLL next to mod-tools.exe (an update wipes the install copy).
+    if persistent.exists() && !install.exists() {
+        if let Some(parent) = install.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        let _ = std::fs::copy(&persistent, &install);
+    }
+}
+
 /// Bundled Pengu Loader payload directory: `(exe)/resources/pengu-loader/`.
 pub fn pengu_loader_resource_dir() -> PathBuf {
     resources_root().join("pengu-loader")
