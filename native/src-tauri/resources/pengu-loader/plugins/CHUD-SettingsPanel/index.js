@@ -191,12 +191,16 @@
       align-items: center;
       justify-content: center;
       padding: 44px 20px;
-      overflow-y: auto;
-      overflow-x: hidden;
+      overflow: hidden;
+      /* In-client: a semi-transparent, blurred scrim so the League client
+         stays visible (dimmed) behind the centered card — not an opaque
+         full-screen takeover. The neon glows sit on top of the scrim. */
       background:
         radial-gradient(1100px 640px at 84% -12%, rgba(255,61,154,.16), transparent 60%),
         radial-gradient(1000px 620px at 4% 112%, rgba(53,228,255,.14), transparent 58%),
-        linear-gradient(160deg, #0a0a1f, #100f2e 60%, #0b0b22);
+        linear-gradient(160deg, rgba(10,10,31,.60), rgba(16,15,46,.66) 60%, rgba(11,11,34,.70));
+      backdrop-filter: blur(6px);
+      -webkit-backdrop-filter: blur(6px);
       pointer-events: all;
     }
     #${PANEL_ID} .chud-decor {
