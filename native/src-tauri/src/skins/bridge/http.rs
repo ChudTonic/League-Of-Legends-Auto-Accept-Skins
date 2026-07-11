@@ -137,6 +137,8 @@ fn content_type_for(path: &Path) -> &'static str {
         Some("png") => "image/png",
         Some("jpg") | Some("jpeg") => "image/jpeg",
         Some("ttf") => "font/ttf",
+        Some("woff2") => "font/woff2",
+        Some("woff") => "font/woff",
         Some("ogg") => "audio/ogg",
         Some("js") => "application/javascript",
         Some("css") => "text/css",
