@@ -674,7 +674,7 @@
     s.id = "chud-party-indicator-css";
     s.textContent = `
       #chud-party-indicator {
-        position: fixed; top: 14px; left: 50%; transform: translateX(-50%);
+        position: fixed; top: 12px; left: 14px;
         z-index: 2147483000; display: flex; align-items: center; gap: 8px;
         padding: 6px 15px; border-radius: 999px;
         background: rgba(11,11,34,.94); border: 1px solid rgba(53,228,255,.55);
@@ -693,7 +693,7 @@
         -webkit-background-clip: text; background-clip: text; color: transparent;
       }
       #chud-party-indicator .chud-ind-count { font-size: 11px; color: #9a9ac8; }
-      @keyframes chudIndIn { from { opacity:0; transform: translate(-50%,-8px); } to { opacity:1; transform: translate(-50%,0); } }
+      @keyframes chudIndIn { from { opacity:0; transform: translateY(-8px); } to { opacity:1; transform: translateY(0); } }
     `;
     document.head.appendChild(s);
   }
