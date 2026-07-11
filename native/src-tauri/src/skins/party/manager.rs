@@ -686,10 +686,22 @@ impl PartyManager {
             if !is_custom && chroma_id.is_none() && champion_id > 0 && skin_id == champion_id * 1000 {
                 continue;
             }
+            // Champion cross-check is ADVISORY, not a gate. Chud party rooms are
+            // derived from the shared lobby partyId, so members are already your
+            // real lobbymates — a stranger can't be in the room, so there's
+            // nothing to spoof-protect against. A mismatch here is almost always
+            // a STALE champ-select snapshot vs the peer's live pick (especially
+            // in ARAM, where bench swaps change champions faster than the session
+            // mapping refreshes). Dropping the skin on mismatch silently killed
+            // legit ARAM party skins, so we just log it and inject the peer's
+            // broadcast pick anyway — the skin_id is self-consistent with its
+            // own champion, so this is at worst cosmetic.
             if let Some(expected) = team_champions.get(&member.summoner_id) {
                 if *expected != champion_id {
-                    log_warn!("[SKIN_COLLECT] Champion mismatch for {}", member.summoner_id);
-                    continue;
+                    log_info!(
+                        "[SKIN_COLLECT] Champion mismatch for {} (session says {expected}, peer broadcast {champion_id}) - injecting the peer's pick anyway",
+                        member.summoner_id
+                    );
                 }
             }
 
