@@ -275,12 +275,19 @@ fn get_state(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
 fn toggle_tool(id: String, app: AppHandle, state: tauri::State<Arc<AppState>>) {
     match id.as_str() {
         "auto_accept" => {
-            if state.running.load(Ordering::SeqCst) {
+            let now_on = if state.running.load(Ordering::SeqCst) {
                 state.running.store(false, Ordering::SeqCst); // loop exits on next check
+                false
             } else {
                 state.running.store(true, Ordering::SeqCst);
                 spawn_auto_accept(&app, state.inner().clone());
-            }
+                true
+            };
+            // Persist the choice so it survives an app restart — Auto-Accept no
+            // longer silently re-arms itself on every launch.
+            let mut cfg = state.config.lock_safe();
+            cfg.auto_accept.enabled = now_on;
+            let _ = cfg.save();
         }
         "auto_range" => {
             toggle_auto_range(&app);
@@ -912,8 +919,13 @@ pub fn run() {
             // Auto-start Auto-Accept (matches the Python app's auto_start_main).
             let handle = app.handle().clone();
             let st = app.state::<Arc<AppState>>().inner().clone();
-            st.running.store(true, Ordering::SeqCst);
-            spawn_auto_accept(&handle, st.clone());
+            // Only arm Auto-Accept on launch if the user left it enabled — its
+            // on/off state is persisted (config.auto_accept.enabled), so a
+            // disable survives a restart instead of re-arming every time.
+            if st.config.lock_safe().auto_accept.enabled {
+                st.running.store(true, Ordering::SeqCst);
+                spawn_auto_accept(&handle, st.clone());
+            }
 
             // Auto-update: on startup, silently check GitHub Releases for a
             // signed newer version, install it, and relaunch. This is what lets
