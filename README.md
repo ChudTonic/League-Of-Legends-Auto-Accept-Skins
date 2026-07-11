@@ -35,6 +35,12 @@ Pick any skin (or chroma) for any champion, right inside the League client. Chud
 - **Chromas & custom skins** — chroma wheel, custom mod support, "historic" older skins, and a random-skin roll.
 - **🤝 Seamless party sync** — when you're in a lobby with friends who also use Chud, it **auto-detects them and syncs everyone's skin choices** — so you all see each other's picked skins in champ select. No codes to paste, no setup. A little **CHUD** badge shows up in-client so you know it's active.
 
+![Chud's Skins tab — skin injection status, League path setup, and injection settings](docs/screenshot-skins.png)
+
+*The in-client menu, right inside League — with the **CHUD · in party** badge up top when friends are synced:*
+
+![Chud's in-client Settings menu inside the League client, showing the CHUD in-party badge](docs/screenshot-in-client.png)
+
 ### 🛡️ Queue & match helpers
 
 | Tool | What it does |
@@ -43,12 +49,13 @@ Pick any skin (or chroma) for any champion, right inside the League client. Chud
 | **Auto-Range** | Holds the *Show Advanced Player Stats* key during a match so range indicators stay on screen. |
 | **Camera Assist** *(experimental)* | Spots your champion on screen and recenters the camera when you drift. |
 
+![Chud dashboard — Auto-Accept armed, Auto-Range and Camera Assist ready](docs/screenshot-dashboard.png)
+
 ### 📊 Live profile
 
 A built-in **Profile** screen pulled straight from your client — rank, recent performance, champion pool, and match history.
 
-![Chud dashboard](docs/screenshot-dashboard.png)
-![Chud profile screen](docs/screenshot-profile.png)
+![Chud profile screen — ranked stats, recent performance, and match history synced from the League client](docs/screenshot-profile.png)
 
 ## 🙏 Credits — original skin work by Rose
 
