@@ -10,6 +10,9 @@ use serde::{Deserialize, Serialize};
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct AutoAccept {
+    /// Whether Auto-Accept arms on app launch. Persisted so the user's on/off
+    /// choice survives a restart instead of silently re-arming every launch.
+    pub enabled: bool,
     pub check_interval: f64,
     pub retry_delay: f64,
     pub max_retries: u32,
@@ -18,7 +21,7 @@ pub struct AutoAccept {
 
 impl Default for AutoAccept {
     fn default() -> Self {
-        Self { check_interval: 1.0, retry_delay: 5.0, max_retries: 3, max_backoff: 30.0 }
+        Self { enabled: true, check_interval: 1.0, retry_delay: 5.0, max_retries: 3, max_backoff: 30.0 }
     }
 }
 
