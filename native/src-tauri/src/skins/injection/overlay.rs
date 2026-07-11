@@ -207,39 +207,22 @@ pub fn mk_run_overlay(
     log_info!("[INJECT] runoverlay started - resuming game");
     game_monitor.resume();
 
-    // Monitor process with no timeout - overlay runs until explicitly
-    // killed (via process::stop_overlay_process / kill_all_runoverlay_processes)
-    // or the game ends.
-    loop {
-        let done = {
-            let mut guard = process.lock().unwrap_or_else(|e| e.into_inner());
-            match guard.as_mut() {
-                Some(c) => matches!(c.try_wait(), Ok(Some(_))),
-                // Cleared externally (e.g. ChampSelect exit killed it) — done.
-                None => true,
-            }
-        };
-        if done {
-            break;
-        }
-        std::thread::sleep(PROCESS_MONITOR_SLEEP);
-    }
-
-    let exit_code = {
-        let mut guard = process.lock().unwrap_or_else(|e| e.into_inner());
-        let code = guard.as_mut().and_then(|c| c.try_wait().ok().flatten()).and_then(|s| s.code()).unwrap_or(0);
-        *guard = None;
-        code
-    };
-
-    wipe_dir(overlay_dir);
-
-    if exit_code != 0 {
-        log_error!("[INJECT] runoverlay failed with return code: {exit_code}");
-    } else {
-        log_info!("[INJECT] runoverlay completed successfully");
-    }
-    Ok(exit_code)
+    // Return as soon as the overlay is live — DO NOT block until the game ends.
+    // The caller (`InjectionManager::do_inject_locked`) holds the injection
+    // mutex across this whole function. The old code then sat in a loop waiting
+    // for `runoverlay` to exit, which meant the mutex was held for the ENTIRE
+    // match — and if that wait ever hung (observed in the wild: the loop's
+    // `try_wait` never returned even after `runoverlay` had self-exited), the
+    // mutex was leaked and EVERY later injection in the session timed out
+    // acquiring it and silently failed ("skins stopped loading after one game").
+    // There is no legitimate concurrent injection DURING a game, so holding the
+    // mutex here bought nothing. The overlay persists on its own via the running
+    // `runoverlay` process; the next champ-select's `reset_stuck_injection`
+    // sweep reaps it, and the next injection overwrites the tracked child +
+    // cleans the overlay dir before rebuilding. `runoverlay` also self-exits
+    // when the game closes.
+    log_info!("[INJECT] Overlay is live - injection complete");
+    Ok(0)
 }
 
 fn drain_pipe(pipe: impl Read) -> Vec<String> {
