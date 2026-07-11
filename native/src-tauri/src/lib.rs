@@ -940,7 +940,11 @@ pub fn run() {
                     // the "update available" pill without needing a restart.
                     run_startup_update_check(update_handle.clone()).await;
                     loop {
-                        tokio::time::sleep(std::time::Duration::from_secs(30 * 60)).await;
+                        // Re-check every 10 min while the app is open so a freshly
+                        // published release surfaces the update pill on its own,
+                        // no restart needed. The endpoint is a tiny static-file
+                        // fetch (GitHub CDN), so this cadence is essentially free.
+                        tokio::time::sleep(std::time::Duration::from_secs(10 * 60)).await;
                         run_startup_update_check(update_handle.clone()).await;
                     }
                 });
