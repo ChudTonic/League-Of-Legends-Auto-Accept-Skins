@@ -15,6 +15,7 @@ mod lcu;
 mod lcu_ws;
 mod profile;
 mod safety;
+mod skins;
 mod stats;
 mod vision;
 mod winutil;
@@ -52,6 +53,29 @@ pub struct AppState {
     pub camera_gen: AtomicU64,
     pub auto_accept_gen: AtomicU64,
     pub config_gen: AtomicU64,         // bumped on save so running loops live-reload settings
+    /// Skins subsystem shared state (S2+) — see `docs/SKINS_PORT.md`.
+    pub skins: Arc<skins::SkinsState>,
+    /// The phase actor's handle, set once during `setup()`. `lcu_ws.rs`
+    /// reads `input_tx` to fan events into it; later milestones (bridge S4,
+    /// ticker S5) will read `events` to subscribe. `None` only in the brief
+    /// window before `setup()` spawns it.
+    pub skins_phase: Mutex<Option<skins::phase::PhaseHandle>>,
+    /// The skins bridge server's handle (S4), set once during `setup()`.
+    /// Later milestones (S5 ticker/trigger, S6 party) hold a clone and call
+    /// its `broadcast_*` methods to push state to the Pengu Loader plugins —
+    /// see `skins::bridge::broadcast`. `None` only in the brief window
+    /// before `setup()` spawns it.
+    pub skins_bridge: Mutex<Option<skins::bridge::BridgeHandle>>,
+    /// The injection manager (S3), set once during `setup()`. S5's ticker /
+    /// trigger pull it from here (via the app handle) to run an injection at
+    /// the loadout deadline. `None` only before `setup()` builds it.
+    pub skins_injection: Mutex<Option<Arc<skins::injection::InjectionManager>>>,
+    /// The party mode manager (S6), set once during `setup()` — after the
+    /// bridge, since it holds a `BridgeHandle` clone to push `party-state`
+    /// updates proactively (see `skins::party::manager::PartyManager`).
+    /// `bridge::handlers`'s party-* handlers pull it from here. `None` only
+    /// in the brief window before `setup()` builds it.
+    pub skins_party: Mutex<Option<Arc<skins::party::manager::PartyManager>>>,
 }
 
 /// Mutex helper that ignores poisoning. A panic while holding a lock must not
@@ -449,8 +473,249 @@ fn capture_debug_frame() -> serde_json::Value {
     })
 }
 
+// ============================================================
+// Skins control panel (S9) — see `docs/SKINS_PORT.md` §5. These commands are
+// thin wrappers over the already-implemented skins subsystem (S1-S8); none
+// of them re-derive logic that already lives in `skins::*`. Party's
+// `party-state` broadcast (`PartyManager::broadcast_state`) goes out over
+// the in-client bridge WebSocket to the Pengu Loader plugins, NOT to this
+// Tauri webview, so there is no push event for party changes here — the
+// front-end polls `skins_party_get_state` while the Skins page is open.
+// ============================================================
+
+/// Disk/process checks shared by `skins_snapshot` and `skins_diagnostics` —
+/// computed once per call so the two never disagree on the same request.
+struct SkinsStatusChecks {
+    pengu_active: bool,
+    skins_downloaded: bool,
+    hashes_ready: bool,
+    tools_available: bool,
+    dll_valid: bool,
+}
+
+fn skins_status_checks() -> SkinsStatusChecks {
+    let tools_dir = skins::injection::tools::cslol_tools_dir();
+    SkinsStatusChecks {
+        pengu_active: skins::pengu::is_active(),
+        skins_downloaded: skins::downloads::skins_present(&skins::paths::skins_dir()),
+        hashes_ready: tools_dir.join("hashes.game.txt").exists(),
+        tools_available: skins::injection::tools::check_tools_available(&tools_dir),
+        dll_valid: skins::injection::tools::verify_cslol_dll(&tools_dir).is_ok(),
+    }
+}
+
+fn skins_diagnostics_value(checks: &SkinsStatusChecks, bridge_port: Option<u16>) -> serde_json::Value {
+    json!({
+        "bridgePort": bridge_port,
+        "penguActive": checks.pengu_active,
+        "toolsAvailable": checks.tools_available,
+        "dllValid": checks.dll_valid,
+        "skinsDownloaded": checks.skins_downloaded,
+        "hashesReady": checks.hashes_ready,
+        "dataDir": skins::paths::data_root().to_string_lossy(),
+    })
+}
+
+/// The Skins page's full state payload — same "one snapshot fn behind a thin
+/// command" shape `snapshot()`/`get_state` already use for the dashboard.
+fn skins_snapshot(state: &AppState) -> serde_json::Value {
+    let cfg = state.config.lock_safe().skins.clone();
+    let bridge_port = state.skins_bridge.lock_safe().as_ref().map(|b| b.port());
+    let checks = skins_status_checks();
+    let party = match state.skins_party.lock_safe().as_ref() {
+        Some(p) => p.get_state(),
+        None => json!({ "enabled": false, "my_token": null, "my_summoner_id": null, "my_summoner_name": "Unknown", "peers": [] }),
+    };
+    json!({
+        "enabled": cfg.enabled,
+        "bridgePort": bridge_port,
+        "penguActive": checks.pengu_active,
+        "skinsDownloaded": checks.skins_downloaded,
+        "hashesReady": checks.hashes_ready,
+        "leaguePath": cfg.league_path,
+        "injectionThresholdMs": cfg.injection_threshold_ms,
+        "autoResumeSecs": cfg.monitor_auto_resume_timeout_secs,
+        "autoDownload": cfg.auto_download_skins,
+        "party": party,
+        "diagnostics": skins_diagnostics_value(&checks, bridge_port),
+    })
+}
+
+#[tauri::command]
+fn skins_get_state(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    skins_snapshot(&state)
+}
+
+/// Persist a partial `SkinsCfg` update (only the keys present are applied —
+/// snake_case, matching `config::SkinsCfg`'s own field names, same contract
+/// `save_config` uses for the main config). Live-applies the auto-resume
+/// timeout to the running `InjectionManager` (`docs/SKINS_PORT.md`'s
+/// reconciliation note) since that field would otherwise need an app
+/// restart to take effect.
+#[tauri::command]
+fn skins_save_settings(settings: serde_json::Value, state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let auto_resume = {
+        let mut cfg = state.config.lock_safe();
+        if let Some(v) = settings.get("league_path").and_then(|v| v.as_str()) {
+            cfg.skins.league_path = v.to_string();
+        }
+        if let Some(v) = settings.get("injection_threshold_ms").and_then(|v| v.as_u64()) {
+            cfg.skins.injection_threshold_ms = v;
+        }
+        if let Some(v) = settings.get("monitor_auto_resume_timeout_secs").and_then(|v| v.as_f64()) {
+            cfg.skins.monitor_auto_resume_timeout_secs = v;
+        }
+        if let Some(v) = settings.get("auto_download_skins").and_then(|v| v.as_bool()) {
+            cfg.skins.auto_download_skins = v;
+        }
+        if let Some(v) = settings.get("party_relay_url").and_then(|v| v.as_str()) {
+            cfg.skins.party_relay_url = v.to_string();
+        }
+        if let Some(v) = settings.get("enabled").and_then(|v| v.as_bool()) {
+            cfg.skins.enabled = v;
+        }
+        let _ = cfg.save();
+        cfg.skins.monitor_auto_resume_timeout_secs
+    };
+    state.config_gen.fetch_add(1, Ordering::SeqCst);
+    if let Some(mgr) = state.skins_injection.lock_safe().as_ref() {
+        mgr.set_auto_resume_timeout(auto_resume);
+    }
+    skins_snapshot(&state)
+}
+
+/// Kick off the skin + hash download pipeline on the async runtime and
+/// return immediately; progress/completion are reported via the
+/// `skins-download-progress`/`skins-download-done` events (main.js's Skins
+/// page renders its own progress bar off these — no Win32 dialog here, see
+/// `docs/SKINS_PORT.md` §0).
+#[tauri::command]
+fn skins_download(force: bool, app: AppHandle) {
+    tauri::async_runtime::spawn(async move {
+        let skins_progress_app = app.clone();
+        let mut skins_progress = move |done: u64, total: Option<u64>| {
+            let _ = skins_progress_app.emit(
+                "skins-download-progress",
+                json!({ "phase": "skins", "done": done, "total": total }),
+            );
+        };
+        let skins_result = skins::downloads::download_skins_on_startup(force, &mut skins_progress).await;
+        if let Err(e) = &skins_result {
+            eprintln!("skins_download: skin download failed: {e}");
+        }
+
+        let tools_dir = skins::injection::tools::cslol_tools_dir();
+        let hashes_progress_app = app.clone();
+        let mut hashes_progress = move |done: u64, total: Option<u64>| {
+            let _ = hashes_progress_app.emit(
+                "skins-download-progress",
+                json!({ "phase": "hashes", "done": done, "total": total }),
+            );
+        };
+        let hashes_result = skins::downloads::ensure_hashes(&tools_dir, &mut hashes_progress).await;
+        if let Err(e) = &hashes_result {
+            eprintln!("skins_download: hash download failed: {e}");
+        }
+
+        let ok = skins_result.is_ok() && hashes_result.is_ok();
+        let error = skins_result
+            .err()
+            .map(|e| e.to_string())
+            .or_else(|| hashes_result.err().map(|e| e.to_string()));
+        let _ = app.emit("skins-download-done", json!({ "ok": ok, "error": error }));
+    });
+}
+
+/// Activate the bundled Pengu Loader against the resolved League install
+/// path (the configured `league_path`, falling back to LCU auto-detection
+/// via `lcu_ext::resolve_game_dir` — the same "Game" folder `mkoverlay`'s
+/// `--game:` flag targets). Blocking (shells out to Pengu Loader's CLI) but
+/// Tauri runs non-`async` commands on its own blocking thread pool, so this
+/// never stalls the webview.
+#[tauri::command]
+fn skins_activate_pengu(state: tauri::State<Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let configured = state.config.lock_safe().skins.league_path.clone();
+    let league_path = if !configured.trim().is_empty() {
+        Some(configured)
+    } else {
+        skins::lcu_ext::resolve_game_dir().map(|p| p.to_string_lossy().into_owned())
+    };
+    if skins::pengu::activate_on_start(league_path.as_deref()) {
+        Ok(json!({ "ok": true, "leaguePath": league_path }))
+    } else {
+        Err("Failed to activate Pengu Loader — check that it's bundled and the League path is correct.".to_string())
+    }
+}
+
+/// Persist the Skins master enable/disable flag. Advisory only this
+/// milestone: it is not yet wired to gate the phase actor/bridge/ticker
+/// themselves (those already run unconditionally per `docs/SKINS_PORT.md`'s
+/// "always spawned, just idles" note) — deeper subsystem gating is future
+/// work; this just persists the flag and reflects it back in state.
+#[tauri::command]
+fn skins_set_enabled(enabled: bool, state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    {
+        let mut cfg = state.config.lock_safe();
+        cfg.skins.enabled = enabled;
+        let _ = cfg.save();
+    }
+    state.config_gen.fetch_add(1, Ordering::SeqCst);
+    skins_snapshot(&state)
+}
+
+#[tauri::command]
+fn skins_diagnostics(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let bridge_port = state.skins_bridge.lock_safe().as_ref().map(|b| b.port());
+    let checks = skins_status_checks();
+    skins_diagnostics_value(&checks, bridge_port)
+}
+
+#[tauri::command]
+async fn skins_party_enable(state: tauri::State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let party = { state.skins_party.lock_safe().clone() };
+    let Some(party) = party else { return Err("Skins subsystem not ready yet".to_string()) };
+    party.enable().await?;
+    Ok(party.get_state())
+}
+
+#[tauri::command]
+async fn skins_party_disable(state: tauri::State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let party = { state.skins_party.lock_safe().clone() };
+    let Some(party) = party else {
+        return Ok(json!({ "enabled": false, "my_token": null, "my_summoner_id": null, "my_summoner_name": "Unknown", "peers": [] }));
+    };
+    party.disable().await;
+    Ok(party.get_state())
+}
+
+#[tauri::command]
+async fn skins_party_add_peer(token: String, state: tauri::State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let party = { state.skins_party.lock_safe().clone() };
+    let Some(party) = party else { return Err("Skins subsystem not ready yet".to_string()) };
+    party.add_peer(&token).await?;
+    Ok(party.get_state())
+}
+
+/// Sync (not async): `PartyManager::get_state` doesn't await anything —
+/// the front-end polls this while the Skins page is open (see this
+/// section's doc comment on why there's no push event).
+#[tauri::command]
+fn skins_party_get_state(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    match state.skins_party.lock_safe().as_ref() {
+        Some(party) => party.get_state(),
+        None => json!({ "enabled": false, "my_token": null, "my_summoner_id": null, "my_summoner_name": "Unknown", "peers": [] }),
+    }
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
+    // Skins subsystem foundation (data-dir tree + file logger). Non-fatal:
+    // the rest of the app must come up even if this fails (e.g. a locked-down
+    // profile) — the skins tools just stay unavailable this session.
+    if let Err(e) = skins::init() {
+        eprintln!("skins::init failed (continuing without skins subsystem): {e}");
+    }
+
     let config = Config::load();
     let mut stats = Stats::load();
     stats.start_session();
@@ -473,6 +738,11 @@ pub fn run() {
         camera_gen: AtomicU64::new(0),
         auto_accept_gen: AtomicU64::new(0),
         config_gen: AtomicU64::new(0),
+        skins: Arc::new(skins::SkinsState::new()),
+        skins_phase: Mutex::new(None),
+        skins_bridge: Mutex::new(None),
+        skins_injection: Mutex::new(None),
+        skins_party: Mutex::new(None),
     });
 
     tauri::Builder::default()
@@ -508,14 +778,70 @@ pub fn run() {
             get_diagnostics,
             get_config,
             save_config,
-            get_profile
+            get_profile,
+            skins_get_state,
+            skins_save_settings,
+            skins_download,
+            skins_activate_pengu,
+            skins_set_enabled,
+            skins_diagnostics,
+            skins_party_enable,
+            skins_party_disable,
+            skins_party_add_peer,
+            skins_party_get_state
         ])
         .setup(|app| {
             // Auto-start Auto-Accept (matches the Python app's auto_start_main).
             let handle = app.handle().clone();
             let st = app.state::<Arc<AppState>>().inner().clone();
             st.running.store(true, Ordering::SeqCst);
-            spawn_auto_accept(&handle, st);
+            spawn_auto_accept(&handle, st.clone());
+
+            // Skins phase engine (S2): always spawned — it just idles (poll
+            // fallback finds no LCU auth, WS fan-out has nothing to send)
+            // when the skins subsystem has no client to watch. Cheaper than
+            // gating on a not-yet-existent settings flag and respawning later.
+            let phase_handle = skins::phase::spawn(handle.clone(), st.skins.clone());
+
+            // Skins bridge server (S4): the local axum server the in-client
+            // Pengu Loader plugins connect to. `InjectionManager` is
+            // constructed here (nothing else in the app owns one yet) with
+            // the standard bundled-tools/injection-tree paths; `set_game_dir`
+            // is left unset this milestone (S5's game-flow wiring resolves
+            // the League install directory and calls it). `bridge::spawn`
+            // only needs to `subscribe()` the phase actor's events (a
+            // `&self` method), so it borrows `phase_handle` rather than
+            // consuming it — `PhaseHandle` isn't `Clone`, and `skins_phase`
+            // below still needs to own it for `lcu_ws.rs`'s fan-out.
+            let injection_manager = std::sync::Arc::new(skins::injection::InjectionManager::new(
+                skins::injection::tools::cslol_tools_dir(),
+                skins::paths::injection_mods_dir(),
+                skins::paths::skins_dir(),
+                skins::paths::injection_overlay_dir(),
+            ));
+            // Apply the configured auto-resume safety timeout (defaults to
+            // `GameMonitor`'s own 60s default; clamped 1..=180s either way).
+            injection_manager
+                .set_auto_resume_timeout(st.config.lock_safe().skins.monitor_auto_resume_timeout_secs);
+            let bridge_handle = skins::bridge::spawn(
+                handle.clone(),
+                st.skins.clone(),
+                injection_manager.clone(),
+                &phase_handle,
+            );
+            *st.skins_bridge.lock_safe() = Some(bridge_handle.clone());
+            // Stash the injection manager so S5's ticker/trigger can pull it
+            // from the app handle at the loadout deadline.
+            *st.skins_injection.lock_safe() = Some(injection_manager);
+
+            // Party mode manager (S6): built after the bridge so it can hold
+            // a `BridgeHandle` clone to push `party-state` updates the
+            // moment the relay's member list changes, not just on request
+            // (see `PartyManager::handle_members_update`).
+            let party_manager = skins::party::manager::PartyManager::new(&handle, st.skins.clone(), bridge_handle);
+            *st.skins_party.lock_safe() = Some(party_manager);
+
+            *st.skins_phase.lock_safe() = Some(phase_handle);
 
             // No in-game hotkeys by design: the tools are armed/disarmed from
             // the dashboard only and stay always-on while armed, so an

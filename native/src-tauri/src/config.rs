@@ -91,6 +91,36 @@ impl Default for Camera {
     }
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct SkinsCfg {
+    /// Empty = autodetect from the running client / registry.
+    pub league_path: String,
+    pub injection_threshold_ms: u64,
+    pub enabled: bool,
+    pub auto_download_skins: bool,
+    /// Empty = unset; `CHUD_RELAY_URL` env overrides at the use site (party
+    /// mode is gated on this until the relay worker is deployed).
+    pub party_relay_url: String,
+    /// `GameMonitor`'s unconditional auto-resume safety timeout — never
+    /// leave the game suspended longer than this even if `runoverlay` never
+    /// starts. `GameMonitor::set_auto_resume_timeout` clamps 1..=180s.
+    pub monitor_auto_resume_timeout_secs: f64,
+}
+
+impl Default for SkinsCfg {
+    fn default() -> Self {
+        Self {
+            league_path: String::new(),
+            injection_threshold_ms: 300,
+            enabled: false,
+            auto_download_skins: true,
+            party_relay_url: String::new(),
+            monitor_auto_resume_timeout_secs: 60.0,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -99,6 +129,7 @@ pub struct Config {
     pub camera: Camera,
     pub lcu: Lcu,
     pub safety: Safety,
+    pub skins: SkinsCfg,
 }
 
 /// Per-user config file path: `%APPDATA%/LeagueOfLegendsTools/config.json`.
