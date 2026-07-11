@@ -16,6 +16,7 @@ use std::path::PathBuf;
 use serde::{Deserialize, Serialize};
 
 use crate::skins::paths;
+use crate::skins::state::HistoricSelection;
 
 // ---------------------------------------------------------------------
 // historic.json — last injected unowned skin per champion.
@@ -43,6 +44,28 @@ impl HistoricEntry {
         match self {
             HistoricEntry::Path(p) if p.starts_with("path:") => Some(&p[5..]),
             _ => None,
+        }
+    }
+
+    /// Convert to the prefix-stripped runtime `HistoricSelection` other
+    /// modules (`ticker::resolve_injection_name`, `bridge::broadcast`) match
+    /// on. A `Path` entry without the `"path:"` prefix (malformed/legacy) is
+    /// still treated as a custom-mod path verbatim, mirroring
+    /// `is_custom_mod_path`'s type-only check in the Python original for the
+    /// dict-shape check but keeping the raw string for diagnosis.
+    pub fn to_selection(&self) -> HistoricSelection {
+        match self {
+            HistoricEntry::Skin(id) => HistoricSelection::SkinId(*id),
+            HistoricEntry::Path(raw) => HistoricSelection::CustomMod(raw.strip_prefix("path:").unwrap_or(raw).to_string()),
+        }
+    }
+}
+
+impl From<&HistoricSelection> for HistoricEntry {
+    fn from(selection: &HistoricSelection) -> Self {
+        match selection {
+            HistoricSelection::SkinId(id) => HistoricEntry::Skin(*id),
+            HistoricSelection::CustomMod(path) => HistoricEntry::Path(format!("path:{path}")),
         }
     }
 }
@@ -207,6 +230,46 @@ mod tests {
         let path = HistoricEntry::Path("path:foo/bar.fantome".to_string());
         assert!(path.is_custom_mod_path());
         assert_eq!(path.custom_mod_path(), Some("foo/bar.fantome"));
+    }
+
+    /// Mirrors `historic.json`'s real on-disk shape (a map of champion ID ->
+    /// entry, not a single bare value) with BOTH a skin/chroma-ID entry and a
+    /// `"path:<rel>"` custom-mod entry present at once, round-tripped through
+    /// serde exactly like `load_historic_map`/`save_historic_map` do.
+    #[test]
+    fn historic_map_round_trips_int_and_path_values_together() {
+        let mut map = HashMap::new();
+        map.insert("103".to_string(), HistoricEntry::Skin(103000));
+        map.insert("234".to_string(), HistoricEntry::Path("path:skins/234000/old-aatrox-viego_1.2.0.fantome".to_string()));
+
+        let json = serde_json::to_string(&map).unwrap();
+        let parsed: HashMap<String, HistoricEntry> = serde_json::from_str(&json).unwrap();
+        assert_eq!(parsed, map);
+        assert_eq!(parsed.get("103"), Some(&HistoricEntry::Skin(103000)));
+        assert_eq!(
+            parsed.get("234"),
+            Some(&HistoricEntry::Path("path:skins/234000/old-aatrox-viego_1.2.0.fantome".to_string()))
+        );
+    }
+
+    #[test]
+    fn to_selection_strips_path_prefix_and_passes_skin_ids_through() {
+        assert_eq!(HistoricEntry::Skin(103000).to_selection(), HistoricSelection::SkinId(103000));
+        assert_eq!(
+            HistoricEntry::Path("path:skins/234000/mod.fantome".to_string()).to_selection(),
+            HistoricSelection::CustomMod("skins/234000/mod.fantome".to_string())
+        );
+    }
+
+    #[test]
+    fn historic_entry_from_selection_round_trips_through_to_selection() {
+        let skin = HistoricSelection::SkinId(103000);
+        assert_eq!(HistoricEntry::from(&skin).to_selection(), skin);
+
+        let custom_mod = HistoricSelection::CustomMod("skins/234000/mod.fantome".to_string());
+        let entry = HistoricEntry::from(&custom_mod);
+        assert_eq!(entry, HistoricEntry::Path("path:skins/234000/mod.fantome".to_string()));
+        assert_eq!(entry.to_selection(), custom_mod);
     }
 
     #[test]

@@ -127,7 +127,7 @@ fn handle_regular_chroma_selection(
 fn disable_historic_mode(shared: &mut SkinsShared) {
     if shared.historic_mode_active {
         shared.historic_mode_active = false;
-        shared.historic_skin_id = None;
+        shared.historic_selection = None;
     }
 }
 
@@ -137,7 +137,7 @@ fn safety_check_historic_mode(shared: &mut SkinsShared) {
     let base_skin_id = locked * 1000;
     if shared.historic_mode_active && selected != base_skin_id {
         shared.historic_mode_active = false;
-        shared.historic_skin_id = None;
+        shared.historic_selection = None;
     }
 }
 

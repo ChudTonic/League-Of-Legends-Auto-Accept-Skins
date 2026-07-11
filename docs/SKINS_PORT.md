@@ -196,8 +196,8 @@ phase (with an InProgress fallback + last_hover_written dedup guard) — the gam
 suspends League on launch so the overlay builds before assets load. Works in Practice Tool
 (no loadout countdown) and normal games alike. See `ticker::inject_for_game` + phase.rs.
 
-Remaining functional gaps (non-blocking): custom-mod historic (path: enum), late-lock
-bootstrap (both documented under Open reconciliation items). Optional future polish: also
+~~Remaining functional gaps (non-blocking): custom-mod historic (path: enum), late-lock
+bootstrap~~ — both closed, see "Open reconciliation items" below. Optional future polish: also
 arm the loadout ticker on the champ-select session-timer FINALIZATION for earlier injection
 in normal games (currently GameStart-time injection covers all modes via the game-suspend).
 
@@ -210,13 +210,36 @@ Open reconciliation items (from S2/S3 agent notes, address before S10):
   (reconciliation pass): `config::SkinsCfg::monitor_auto_resume_timeout_secs`
   (default 60.0) is now applied via `InjectionManager::set_auto_resume_timeout`
   in `lib.rs`'s `setup()`, right after construction.
-- `historic_skin_id: Option<i64>` can't represent the Python "path:<rel>" custom-mod
+- ~~`historic_skin_id: Option<i64>` can't represent the Python "path:<rel>" custom-mod
   historic value — historic-mode auto-reapply of a CUSTOM mod is not ported (only
-  skin/chroma-ID historic works). Needs `historic_skin_id` → an enum in a future pass.
-- Late-lock bootstrap: if the app starts mid-ChampSelect after the user already
+  skin/chroma-ID historic works). Needs `historic_skin_id` → an enum in a future pass.~~
+  DONE: `SkinsShared.historic_selection: Option<state::HistoricSelection>`
+  (`SkinId(i64)` / `CustomMod(String)`) replaces it, with every reader/writer
+  (state.rs resets, features/chroma.rs, features/random.rs, bridge/handlers.rs,
+  phase.rs) updated in lockstep. `features::historic::HistoricEntry` (the
+  on-disk "path:"-prefixed union, already untagged-serde) gained
+  `to_selection()`/`From<&HistoricSelection>` conversions; `historic.json`'s
+  format is unchanged. `ticker::resolve_injection_name`'s historic branch now
+  handles `CustomMod` by extracting the base skin ID from the mod's
+  `"skins/{id}/..."` path (Python's `skin_name_resolver.py` fallback chain,
+  ported verbatim) — the actual mod file is picked up by
+  `trigger::auto_select_historic_custom_mod`, which already re-reads
+  `historic.json` independently, so both paths converge on the one custom-mod
+  injection code path in `trigger.rs`. `bridge::broadcast_historic_state` now
+  takes `Option<&HistoricSelection>` and reports `historicSkinId: null` +
+  `historicSkinName: <path>` for a `CustomMod` (wire field NAMES unchanged).
+- ~~Late-lock bootstrap: if the app starts mid-ChampSelect after the user already
   locked, the phase engine doesn't proactively fetch the session to detect the
   existing lock (only WS-fed session deltas trigger it). Port
-  `lcu_monitor_thread.py::_bootstrap_late_locked_champion` in a future pass.
+  `lcu_monitor_thread.py::_bootstrap_late_locked_champion` in a future pass.~~
+  DONE: `phase.rs::bootstrap_late_locked_champion` proactively fetches
+  `/lol-champ-select/v1/session` and feeds it through the SAME
+  `process_session` pipeline the WS fan-out uses (no parallel copy). Hooked in
+  from `champ_select_entry` (catches "already locked when we first observe
+  ChampSelect") and every 2s poll tick in `run()` (catches a lock landing
+  between actor start and the first WS delta). Guarded by the extracted pure
+  predicate `should_attempt_late_lock_bootstrap(phase, own_champion_locked)`
+  so both call sites are a no-op once locked.
 
 - **S1 foundation**: paths/slog/config/state/special + Cargo deps + `skins::mod` skeleton — compiles.
 - **S2 LCU + phase**: lcu_ext, phase actor, ws fan-out — compiles + unit tests for map_cells/compute_locked.

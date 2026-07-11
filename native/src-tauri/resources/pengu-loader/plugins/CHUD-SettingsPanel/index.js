@@ -7,6 +7,7 @@
 (function initSettingsPanel() {
   const LOG_PREFIX = "[Chud-SettingsPanel]";
   const GITHUB_URL = "https://github.com/jivy26/Chud";
+  const DISCORD_URL = "https://discord.gg/a2QTg7btaT";
 
   const PANEL_ID = "chud-settings-panel";
   const FLYOUT_ID = "chud-settings-flyout";
@@ -68,16 +69,16 @@
     }
 
     @font-face {
-      font-family: "Beaufort for LOL";
-      src: url("http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/BeaufortforLOL-Regular.ttf") format("truetype");
+      font-family: "JetBrains Mono";
+      src: url("http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/JetBrainsMono-Regular.ttf") format("truetype");
       font-weight: normal;
       font-style: normal;
       font-display: swap;
     }
     
     @font-face {
-      font-family: "Beaufort for LOL";
-      src: url("http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/BeaufortforLOL-Bold.ttf") format("truetype");
+      font-family: "JetBrains Mono";
+      src: url("http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/JetBrainsMono-Bold.ttf") format("truetype");
       font-weight: bold;
       font-style: normal;
       font-display: swap;
@@ -86,7 +87,7 @@
     /* Diagnostics / Troubleshooting dialog scrollbar (avoid native Windows scrollbar look) */
     #chud-diagnostics-body {
       scrollbar-width: thin;
-      scrollbar-color: #463714 rgba(0, 0, 0, 0.25);
+      scrollbar-color: #0d1420 rgba(0, 0, 0, 0.25);
     }
 
     #chud-diagnostics-body::-webkit-scrollbar {
@@ -141,8 +142,8 @@
       background-image: none !important;
       border-radius: 0 !important;
       padding: 0 !important;
-      color: #cdbe91;
-      font-family: "Beaufort for LOL", serif;
+      color: #7ceeff;
+      font-family: "JetBrains Mono", monospace;
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
@@ -168,8 +169,8 @@
     lol-uikit-flyout-frame#${FLYOUT_ID} .lc-flyout-content,
     #${FLYOUT_ID} lc-flyout-content,
     #${FLYOUT_ID} .lc-flyout-content {
-      background: #010a13 !important;
-      background-color: #010a13 !important;
+      background: #070b16 !important;
+      background-color: #070b16 !important;
       background-image: none !important;
       border-radius: 0 !important;
       padding: 20px !important;
@@ -184,7 +185,7 @@
       font-size: 18px;
       font-weight: bold !important;
       margin-bottom: 12px;
-      color: #c8aa6e;
+      color: #35e4ff;
       text-align: center;
       width: 100%;
     }
@@ -198,14 +199,14 @@
       display: block;
       margin-bottom: 8px;
       font-size: 14px;
-      color: #cdbe91;
+      color: #7ceeff;
     }
     
     #${FLYOUT_ID} .settings-value {
       display: inline-block;
       margin-left: 10px;
       font-size: 14px;
-      color: #c8aa6e;
+      color: #35e4ff;
       min-width: 50px;
     }
 
@@ -239,7 +240,7 @@
     }
 
     #${FLYOUT_ID} .chud-tooltip-icon:focus-visible {
-      outline: 1px solid #c8aa6e;
+      outline: 1px solid #35e4ff;
       outline-offset: 2px;
       border-radius: 3px;
     }
@@ -254,8 +255,8 @@
       box-sizing: border-box;
       padding: 10px 12px;
       background: #0b1a2a;
-      border: 1px solid #5c5b56;
-      color: #cdbe91;
+      border: 1px solid #3d4a68;
+      color: #7ceeff;
       font-size: 12px;
       line-height: 1.35;
       white-space: pre-line;
@@ -268,7 +269,7 @@
       transition: opacity 0.12s ease, transform 0.12s ease;
       z-index: 100050;
       pointer-events: none;
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
     }
 
     #chud-global-tooltip[data-show="true"] {
@@ -308,7 +309,7 @@
 
     #chud-global-tooltip[data-placement="top"]::before {
       top: 100%;
-      border-top: 8px solid #5c5b56;
+      border-top: 8px solid #3d4a68;
       margin-top: 1px;
     }
 
@@ -320,14 +321,14 @@
 
     #chud-global-tooltip[data-placement="bottom"]::before {
       top: -8px;
-      border-bottom: 8px solid #5c5b56;
+      border-bottom: 8px solid #3d4a68;
       margin-top: -1px;
     }
     
     #${FLYOUT_ID} .settings-slider {
       width: 100%;
       height: 6px;
-      background: #3c3c41;
+      background: #2a3350;
       border-radius: 3px;
       outline: none;
       -webkit-appearance: none;
@@ -339,7 +340,7 @@
       appearance: none;
       width: 16px;
       height: 16px;
-      background: #c8aa6e;
+      background: #35e4ff;
       border-radius: 50%;
       cursor: pointer;
     }
@@ -347,7 +348,7 @@
     #${FLYOUT_ID} .settings-slider::-moz-range-thumb {
       width: 16px;
       height: 16px;
-      background: #c8aa6e;
+      background: #35e4ff;
       border-radius: 50%;
       cursor: pointer;
       border: none;
@@ -363,40 +364,40 @@
     #${FLYOUT_ID} .settings-input {
       width: 100%;
       padding: 8px;
-      background: #3c3c41;
-      border: 1px solid #5c5b56;
+      background: #2a3350;
+      border: 1px solid #3d4a68;
       border-radius: 4px;
-      color: #cdbe91;
+      color: #7ceeff;
       font-size: 14px;
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       box-sizing: border-box;
     }
     
     #${FLYOUT_ID} .settings-input::placeholder {
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       color: #7d7d7d;
       opacity: 1;
     }
     
     #${FLYOUT_ID} .settings-input::-webkit-input-placeholder {
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       color: #7d7d7d;
     }
     
     #${FLYOUT_ID} .settings-input::-moz-placeholder {
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       color: #7d7d7d;
       opacity: 1;
     }
     
     #${FLYOUT_ID} .settings-input:-ms-input-placeholder {
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       color: #7d7d7d;
     }
     
     #${FLYOUT_ID} .settings-input:focus {
       outline: none;
-      border-color: #c8aa6e;
+      border-color: #35e4ff;
     }
     
     #${FLYOUT_ID} .settings-status {
@@ -408,10 +409,10 @@
     #${FLYOUT_ID} .settings-button {
       width: 100%;
       padding: 10px;
-      background: #0a1428;
-      border: 1px solid #c8aa6e;
+      background: #0b1120;
+      border: 1px solid #35e4ff;
       border-radius: 4px;
-      color: #c8aa6e;
+      color: #35e4ff;
       font-size: 14px;
       font-weight: bold;
       cursor: pointer;
@@ -428,7 +429,7 @@
       justify-content: space-between;
       margin-top: 12px;
       padding-top: 12px;
-      border-top: 1px solid #3c3c41;
+      border-top: 1px solid #2a3350;
       width: 100%;
     }
     
@@ -440,14 +441,14 @@
     }
     
     #${FLYOUT_ID} .settings-link {
-      color: #c8aa6e;
+      color: #35e4ff;
       text-decoration: none;
       font-size: 14px;
       transition: color 0.2s;
     }
     
     #${FLYOUT_ID} .settings-link:hover {
-      color: #f0e6d2;
+      color: #dff3ff;
     }
     
     #${FLYOUT_ID} .settings-checkbox-wrapper {
@@ -458,10 +459,10 @@
     
     /* Style for the "Add custom mods" dropdown button - match League UI button styling */
     #add-custom-mods-dropdown {
-      background: #1E2328 !important;
-      background-color: #1E2328 !important;
-      color: #c8aa6e !important;
-      font-family: "Beaufort for LOL", serif !important;
+      background: #131a2b !important;
+      background-color: #131a2b !important;
+      color: #35e4ff !important;
+      font-family: "JetBrains Mono", monospace !important;
       pointer-events: all !important;
       position: relative !important;
       display: flex !important;
@@ -502,8 +503,8 @@
     #add-custom-mods-dropdown,
     #add-custom-mods-dropdown::before,
     #add-custom-mods-dropdown::after {
-      background: #1E2328 !important;
-      background-color: #1E2328 !important;
+      background: #131a2b !important;
+      background-color: #131a2b !important;
       background-image: none !important;
       opacity: 1 !important;
     }
@@ -512,8 +513,8 @@
     #add-custom-mods-dropdown:hover,
     #add-custom-mods-dropdown:hover::before,
     #add-custom-mods-dropdown:hover::after {
-      background: #1E2328 !important;
-      background-color: #1E2328 !important;
+      background: #131a2b !important;
+      background-color: #131a2b !important;
       opacity: 1 !important;
     }
     
@@ -522,8 +523,8 @@
     #add-custom-mods-dropdown:active,
     #add-custom-mods-dropdown:focus-visible,
     #add-custom-mods-dropdown:focus-within {
-      background: #1E2328 !important;
-      background-color: #1E2328 !important;
+      background: #131a2b !important;
+      background-color: #131a2b !important;
       outline: none !important;
       box-shadow: none !important;
       border: none !important;
@@ -596,7 +597,7 @@
     
     /* Override :host .ui-dropdown color to match button contrast */
     #add-custom-mods-dropdown .ui-dropdown {
-      color: #CDBE91 !important;
+      color: #7ceeff !important;
       font-size: 12px !important;
       font-weight: normal !important;
       line-height: 16px !important;
@@ -608,7 +609,7 @@
     #add-custom-mods-dropdown::part(content),
     #add-custom-mods-dropdown .ui-dropdown-current-content,
     #add-custom-mods-dropdown .ui-dropdown-current-content.shadow {
-      color: #CDBE91 !important;
+      color: #7ceeff !important;
     }
     
     
@@ -652,8 +653,8 @@
       background-image: none !important;
       border-radius: 0 !important;
       padding: 0 !important;
-      color: #cdbe91;
-      font-family: "Beaufort for LOL", serif;
+      color: #7ceeff;
+      font-family: "JetBrains Mono", monospace;
       display: flex !important;
       flex-direction: column !important;
       align-items: center !important;
@@ -700,14 +701,14 @@
     #champion-selection-flyout .lc-flyout-content,
     #skin-selection-flyout lc-flyout-content,
     #skin-selection-flyout .lc-flyout-content {
-      background: #010a13 !important;
-      background-color: #010a13 !important;
+      background: #070b16 !important;
+      background-color: #070b16 !important;
       background-image: none !important;
       border-radius: 0 !important;
       padding: 20px !important;
       width: 100% !important;
       box-sizing: border-box !important;
-      border: 1px solid #c8aa6e !important;
+      border: 1px solid #35e4ff !important;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5) !important;
       margin: 0 !important;
       overflow-x: hidden !important;
@@ -750,7 +751,7 @@
       font-size: 18px;
       font-weight: bold !important;
       margin-bottom: 12px;
-      color: #c8aa6e;
+      color: #35e4ff;
       text-align: center;
       width: 100%;
       position: relative;
@@ -773,7 +774,7 @@
       left: 0;
       background: transparent;
       border: none;
-      color: #a09b8c;
+      color: #7a93a8;
       width: 32px;
       height: 32px;
       cursor: pointer;
@@ -794,10 +795,10 @@
       stroke-linejoin: round;
     }
     .back-button:hover {
-      color: #c8aa6e;
+      color: #35e4ff;
     }
     .back-button:active {
-      color: #f0e6d2;
+      color: #dff3ff;
     }
     
     .dialog-title-wrapper {
@@ -805,8 +806,8 @@
       text-align: center;
       font-size: 18px;
       font-weight: bold;
-      color: #c8aa6e;
-      font-family: "Beaufort for LOL", serif;
+      color: #35e4ff;
+      font-family: "JetBrains Mono", monospace;
     }
     
     #champion-selection-flyout .champion-search-input,
@@ -856,26 +857,26 @@
       background: transparent;
     }
     .champion-card:hover {
-      border-color: #c8aa6e;
-      background: rgba(200, 170, 110, 0.08);
+      border-color: #35e4ff;
+      background: rgba(53, 228, 255, 0.08);
     }
     .champion-card img {
       width: 60px;
       height: 60px;
       border-radius: 50%;
-      border: 2px solid #5b5a56;
+      border: 2px solid #3d4a68;
       object-fit: cover;
       transition: border-color 0.2s;
     }
     .champion-card:hover img {
-      border-color: #c8aa6e;
+      border-color: #35e4ff;
     }
     .champion-card .champion-name {
       margin-top: 6px;
       font-size: 11px;
-      color: #a09b8c;
+      color: #7a93a8;
       text-align: center;
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       line-height: 1.2;
       max-width: 80px;
       overflow: hidden;
@@ -883,7 +884,7 @@
       white-space: nowrap;
     }
     .champion-card:hover .champion-name {
-      color: #cdbe91;
+      color: #7ceeff;
     }
 
     #skins-list {
@@ -901,15 +902,15 @@
       display: flex;
       flex-direction: column;
       cursor: pointer;
-      border: 1px solid #5b5a56;
+      border: 1px solid #3d4a68;
       border-radius: 4px;
       overflow: hidden;
       transition: border-color 0.2s, box-shadow 0.2s;
-      background: #1e2328;
+      background: #131a2b;
     }
     .skin-card:hover {
-      border-color: #c8aa6e;
-      box-shadow: 0 0 8px rgba(200, 170, 110, 0.3);
+      border-color: #35e4ff;
+      box-shadow: 0 0 8px rgba(53, 228, 255, 0.3);
     }
     .skin-card img {
       width: 100%;
@@ -921,16 +922,16 @@
     .skin-card .skin-name {
       padding: 8px;
       font-size: 12px;
-      color: #a09b8c;
+      color: #7a93a8;
       text-align: center;
-      font-family: "Beaufort for LOL", serif;
+      font-family: "JetBrains Mono", monospace;
       line-height: 1.3;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
     }
     .skin-card:hover .skin-name {
-      color: #cdbe91;
+      color: #7ceeff;
     }
   `;
   }
@@ -1535,8 +1536,8 @@
     versionBadge.id = "chud-version-badge";
     versionBadge.style.cssText = [
       "font-size: 11px",
-      "color: #a09b8c",
-      "font-family: Beaufort for LOL, serif",
+      "color: #7a93a8",
+      "font-family: JetBrains Mono, monospace",
       "letter-spacing: 0.06em",
     ].join(";");
     versionBadge.textContent = currentSettings.version ? `v${currentSettings.version}` : "";
@@ -1614,7 +1615,7 @@
     thresholdTrack.style.left = "0";
     thresholdTrack.style.width = "calc(100% - 2.5px)";
     thresholdTrack.style.height = "2px";
-    thresholdTrack.style.background = "#1e2328";
+    thresholdTrack.style.background = "#131a2b";
 
     // Calculate initial position for threshold slider (value 50, min 30, max 200)
     const thresholdInitialValue = 50;
@@ -1630,10 +1631,10 @@
     thresholdFill.className = "lol-uikit-slider-fill";
     thresholdFill.style.width = `${thresholdInitialPosition}px`;
     thresholdFill.style.height = "2px";
-    thresholdFill.style.background = "linear-gradient(to left, #695625, #463714)";
+    thresholdFill.style.background = "linear-gradient(to left, #173544, #0d1420)";
     thresholdFill.style.position = "absolute";
     thresholdFill.style.top = "13px";
-    thresholdFill.style.border = "thin solid #010a13";
+    thresholdFill.style.border = "thin solid #070b16";
     thresholdFill.style.transition = "width 0.1s ease-out, background 0.2s ease";
 
     const thresholdButton = document.createElement("div");
@@ -1662,8 +1663,8 @@
     benchmarkInfo.id = "chud-threshold-benchmark";
     benchmarkInfo.style.marginTop = "6px";
     benchmarkInfo.style.fontSize = "11px";
-    benchmarkInfo.style.fontFamily = "'Beaufort for LOL', serif";
-    benchmarkInfo.style.color = "#7e6f4e";
+    benchmarkInfo.style.fontFamily = "'JetBrains Mono', monospace";
+    benchmarkInfo.style.color = "#7a93a8";
     thresholdSection.appendChild(benchmarkInfo);
 
     form.appendChild(thresholdSection);
@@ -1738,16 +1739,16 @@
     timeoutTrack.style.left = "0";
     timeoutTrack.style.width = "calc(100% - 2.5px)";
     timeoutTrack.style.height = "2px";
-    timeoutTrack.style.background = "#1e2328";
+    timeoutTrack.style.background = "#131a2b";
 
     const timeoutFill = document.createElement("div");
     timeoutFill.className = "lol-uikit-slider-fill";
     timeoutFill.style.width = "0px"; // Initial position for min value
     timeoutFill.style.height = "2px";
-    timeoutFill.style.background = "linear-gradient(to left, #695625, #463714)";
+    timeoutFill.style.background = "linear-gradient(to left, #173544, #0d1420)";
     timeoutFill.style.position = "absolute";
     timeoutFill.style.top = "13px";
-    timeoutFill.style.border = "thin solid #010a13";
+    timeoutFill.style.border = "thin solid #070b16";
     timeoutFill.style.transition = "width 0.1s ease-out, background 0.2s ease";
 
     const timeoutButton = document.createElement("div");
@@ -2038,7 +2039,7 @@
       rootStyle.setAttribute("data-chud-dropdown-color", "true");
       rootStyle.textContent = `
         :host .ui-dropdown {
-          color: #CDBE91 !important;
+          color: #7ceeff !important;
           font-size: 12px !important;
           font-weight: normal !important;
           line-height: 16px !important;
@@ -2149,6 +2150,13 @@
     const linksSection = document.createElement("div");
     linksSection.className = "settings-links";
 
+    const discordLink = document.createElement("a");
+    discordLink.className = "settings-link";
+    discordLink.href = DISCORD_URL;
+    discordLink.target = "_blank";
+    discordLink.textContent = "Discord";
+    linksSection.appendChild(discordLink);
+
     const githubLink = document.createElement("a");
     githubLink.className = "settings-link";
     githubLink.href = GITHUB_URL;
@@ -2248,11 +2256,11 @@
     const updateHoverEffects = () => {
       if (isHovered || isDragging) {
         fill.style.background = isDragging
-          ? 'linear-gradient(to right, #695625, #463714)'
-          : 'linear-gradient(to right, #785a28 0%, #c89b3c 56%, #c8aa6e 100%)';
+          ? 'linear-gradient(to right, #173544, #0d1420)'
+          : 'linear-gradient(to right, #1b5566 0%, #2ea6d6 56%, #35e4ff 100%)';
         button.style.backgroundPosition = isDragging ? '0 -60px' : '0 -30px';
       } else {
-        fill.style.background = 'linear-gradient(to left, #695625, #463714)';
+        fill.style.background = 'linear-gradient(to left, #173544, #0d1420)';
         button.style.backgroundPosition = '0 0';
       }
     };
@@ -2730,10 +2738,10 @@
     const loadingIndicator = document.createElement("div");
     loadingIndicator.id = "champion-loading";
     loadingIndicator.textContent = "Loading champions...";
-    loadingIndicator.style.color = "#cdbe91";
+    loadingIndicator.style.color = "#7ceeff";
     loadingIndicator.style.textAlign = "center";
     loadingIndicator.style.padding = "20px";
-    loadingIndicator.style.fontFamily = '"Beaufort for LOL", serif';
+    loadingIndicator.style.fontFamily = '"JetBrains Mono", monospace';
     flyoutContent.appendChild(loadingIndicator);
 
     // Champions grid wrapper
@@ -2789,7 +2797,7 @@
     championsGrid.innerHTML = "";
 
     if (champions.length === 0) {
-      championsGrid.innerHTML = `<div style="grid-column: 1 / -1; color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No champions found matching your search.</div>`;
+      championsGrid.innerHTML = `<div style="grid-column: 1 / -1; color: #7ceeff; text-align: center; padding: 20px; font-family: 'JetBrains Mono', monospace;">No champions found matching your search.</div>`;
       return;
     }
 
@@ -2879,10 +2887,10 @@
     const loadingIndicator = document.createElement("div");
     loadingIndicator.id = "skin-loading";
     loadingIndicator.textContent = "Loading skins...";
-    loadingIndicator.style.color = "#cdbe91";
+    loadingIndicator.style.color = "#7ceeff";
     loadingIndicator.style.textAlign = "center";
     loadingIndicator.style.padding = "20px";
-    loadingIndicator.style.fontFamily = '"Beaufort for LOL", serif';
+    loadingIndicator.style.fontFamily = '"JetBrains Mono", monospace';
     flyoutContent.appendChild(loadingIndicator);
 
     // Skins list container
@@ -2942,13 +2950,13 @@
     if (!championsGrid) return;
 
     if (payload.error) {
-      championsGrid.innerHTML = `<div style="color: #ff6b6b; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">${escapeHtml(payload.error)}</div>`;
+      championsGrid.innerHTML = `<div style="color: #ff6b6b; text-align: center; padding: 20px; font-family: 'JetBrains Mono', monospace;">${escapeHtml(payload.error)}</div>`;
       return;
     }
 
     const champions = payload.champions || [];
     if (champions.length === 0) {
-      championsGrid.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No champions found. Please ensure League of Legends client is running.</div>`;
+      championsGrid.innerHTML = `<div style="color: #7ceeff; text-align: center; padding: 20px; font-family: 'JetBrains Mono', monospace;">No champions found. Please ensure League of Legends client is running.</div>`;
       return;
     }
 
@@ -2983,7 +2991,7 @@
       } else {
         skinsListContainer.innerHTML = "";
       }
-      skinsListContainer.innerHTML = `<div style="color: #ff6b6b; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">${escapeHtml(payload.error)}</div>`;
+      skinsListContainer.innerHTML = `<div style="color: #ff6b6b; text-align: center; padding: 20px; font-family: 'JetBrains Mono', monospace;">${escapeHtml(payload.error)}</div>`;
       return;
     }
 
@@ -3011,7 +3019,7 @@
     }
 
     if (skins.length === 0) {
-      skinsListContainer.innerHTML = `<div style="color: #cdbe91; text-align: center; padding: 20px; font-family: 'Beaufort for LOL', serif;">No skins found for this champion.</div>`;
+      skinsListContainer.innerHTML = `<div style="color: #7ceeff; text-align: center; padding: 20px; font-family: 'JetBrains Mono', monospace;">No skins found for this champion.</div>`;
       return;
     }
 
@@ -3114,7 +3122,7 @@
     panel.style.width = "520px";
     panel.style.maxWidth = "92vw";
     panel.style.background = "#0b0f14";
-    panel.style.border = "1px solid #463714";
+    panel.style.border = "1px solid #0d1420";
     panel.style.boxShadow = "0 10px 30px rgba(0,0,0,0.6)";
     panel.style.padding = "14px";
     panel.style.pointerEvents = "auto";
@@ -3122,8 +3130,8 @@
 
     const title = document.createElement("div");
     title.textContent = "Troubleshooting";
-    title.style.color = "#cdbe91";
-    title.style.fontFamily = "'Beaufort for LOL', serif";
+    title.style.color = "#7ceeff";
+    title.style.fontFamily = "'JetBrains Mono', monospace";
     title.style.fontSize = "16px";
     title.style.marginBottom = "10px";
     panel.appendChild(title);
@@ -3142,10 +3150,10 @@
     closeBtn.style.padding = "0";
     closeBtn.style.border = "none";
     closeBtn.style.background = "#0b0f14";
-    closeBtn.style.color = "#cdbe91";
+    closeBtn.style.color = "#7ceeff";
     closeBtn.style.cursor = "pointer";
     closeBtn.style.borderRadius = "4px";
-    closeBtn.style.fontFamily = "'Beaufort for LOL', serif";
+    closeBtn.style.fontFamily = "'JetBrains Mono', monospace";
     closeBtn.style.fontSize = "18px";
     closeBtn.addEventListener("click", () => {
       dialog.remove();
@@ -3155,11 +3163,11 @@
 
     const body = document.createElement("div");
     body.id = "chud-diagnostics-body";
-    body.style.color = "#cdbe91";
-    body.style.fontFamily = "'Beaufort for LOL', serif";
+    body.style.color = "#7ceeff";
+    body.style.fontFamily = "'JetBrains Mono', monospace";
     body.style.fontSize = "12px";
     body.style.whiteSpace = "normal";
-    body.style.border = "1px solid #010a13";
+    body.style.border = "1px solid #070b16";
     body.style.background = "#070a0e";
     body.style.padding = "10px";
     body.style.maxHeight = "220px";
@@ -3171,8 +3179,8 @@
     const foot = document.createElement("div");
     foot.id = "chud-diagnostics-foot";
     foot.style.marginTop = "8px";
-    foot.style.color = "#7e6f4e";
-    foot.style.fontFamily = "'Beaufort for LOL', serif";
+    foot.style.color = "#7a93a8";
+    foot.style.fontFamily = "'JetBrains Mono', monospace";
     foot.style.fontSize = "11px";
     panel.appendChild(foot);
 
@@ -3323,7 +3331,7 @@
           return `
             <div style="border:1px solid rgba(70,55,20,0.55); background: rgba(1,10,19,0.35); padding:8px; margin-bottom:8px;">
               <div style="display:flex; gap:8px; align-items:baseline; margin-bottom:6px;">
-                <span style="font-weight:800; color:#c89b3c;">${idx + 1}.</span>
+                <span style="font-weight:800; color:#2ea6d6;">${idx + 1}.</span>
                 ${tsHtml}
                 <span style="font-weight:700;">${title}</span>
               </div>
@@ -3364,10 +3372,10 @@
 
     let html;
     if (needsIncrease) {
-      html = `<span style="color:#c8aa6e;">Based on ${label}, we recommend <span style="color:#c89b3c; font-weight:700;">${recS}s</span></span>`;
+      html = `<span style="color:#35e4ff;">Based on ${label}, we recommend <span style="color:#2ea6d6; font-weight:700;">${recS}s</span></span>`;
       html += ` <button id="chud-apply-recommended-btn" style="
-        margin-left:4px; padding:1px 8px; border:1px solid #463714; background:#1e2328;
-        color:#cdbe91; cursor:pointer; font-family:'Beaufort for LOL',serif; font-size:11px;
+        margin-left:4px; padding:1px 8px; border:1px solid #0d1420; background:#131a2b;
+        color:#7ceeff; cursor:pointer; font-family:'JetBrains Mono', monospace; font-size:11px;
         vertical-align:middle;
       ">Apply</button>`;
     } else {

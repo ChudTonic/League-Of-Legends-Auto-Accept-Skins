@@ -1292,7 +1292,7 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
                         animationBadge.style.fontFamily = 'inherit';
                         animationBadge.style.top = '5px';
                         animationBadge.style.left = '5px';
-                        animationBadge.style.color = '#010a13';
+                        animationBadge.style.color = '#070b16';
                         animationBadge.style.padding = '2px 6px';
                         animationBadge.style.borderRadius = '4px';
                         animationBadge.style.fontSize = '10px';
@@ -1330,7 +1330,7 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
                         lolBadge.style.fontSize = '10px';
                         lolBadge.style.fontWeight = 'bold';
                         lolBadge.style.zIndex = '2';
-                        lolBadge.style.background = 'linear-gradient(45deg, #785a28, #c8aa6e)';
+                        lolBadge.style.background = 'linear-gradient(45deg, #1b5566, #35e4ff)';
                         itemElement.appendChild(lolBadge);
                     }
                     
@@ -1480,7 +1480,7 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
 						<div style="display: flex; flex-direction: column; gap: 0px; margin-top: 10px;">
 							<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0;">
 								<div style="display: flex; align-items: center; gap: 10px; flex: 1;">
-									<p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+									<p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
 										${LanguageManager.t('BlurAmount')}: ${this.settings.blurAmount}%
 									</p>
 								</div>
@@ -1492,8 +1492,8 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
 											   style="width: 100%; height: 100%; opacity: 0; cursor: pointer; position: absolute; z-index: 2;">
 										<div class="lol-uikit-slider-wrapper horizontal" style="position: relative; height: 30px; width: 100%;">
 											<div class="lol-uikit-slider-base" style="height: 30px; width: 100%; position: absolute;">
-												<div class="lol-uikit-slider-base-track" style="position: absolute; top: 14px; left: 0; width: calc(100% - 2.5px); height: 2px; background: #1e2328;"></div>
-												<div class="lol-uikit-slider-fill" style="width: ${buttonPosition}px; height: 2px; background: linear-gradient(to left, #695625, #463714); position: absolute; top: 13px; border: thin solid #010a13; transition: width 0.1s ease-out, background 0.2s ease;"></div>
+												<div class="lol-uikit-slider-base-track" style="position: absolute; top: 14px; left: 0; width: calc(100% - 2.5px); height: 2px; background: #131a2b;"></div>
+												<div class="lol-uikit-slider-fill" style="width: ${buttonPosition}px; height: 2px; background: linear-gradient(to left, #173544, #0d1420); position: absolute; top: 13px; border: thin solid #070b16; transition: width 0.1s ease-out, background 0.2s ease;"></div>
 												<div class="lol-uikit-slider-button" style="left: ${buttonPosition}px; width: 30px; height: 30px; background: url('/fe/lol-uikit/images/slider-btn.png') no-repeat top left; background-size: 100%; position: absolute; top: 0px; cursor: pointer; transition: left 0.1s ease-out;"></div>
 											</div>
 										</div>
@@ -1562,11 +1562,11 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
 					const updateHoverEffects = () => {
 						if (isHovered || isDragging) {
 							fill.style.background = isDragging 
-								? 'linear-gradient(to right, #695625, #463714)'
-								: 'linear-gradient(to right, #785a28 0%, #c89b3c 56%, #c8aa6e 100%)';
+								? 'linear-gradient(to right, #173544, #0d1420)'
+								: 'linear-gradient(to right, #1b5566 0%, #2ea6d6 56%, #35e4ff 100%)';
 							button.style.backgroundPosition = isDragging ? '0 -60px' : '0 -30px';
 						} else {
-							fill.style.background = 'linear-gradient(to left, #695625, #463714)';
+							fill.style.background = 'linear-gradient(to left, #173544, #0d1420)';
 							button.style.backgroundPosition = '0 0';
 						}
 					};

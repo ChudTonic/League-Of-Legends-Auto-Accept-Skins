@@ -446,7 +446,7 @@ async fn handle_select_skin_mod(ctx: &BridgeContext, champion_id: Option<i64>, s
         let was_active = shared.historic_mode_active;
         if was_active {
             shared.historic_mode_active = false;
-            shared.historic_skin_id = None;
+            shared.historic_selection = None;
         }
         was_active
     };
@@ -499,7 +499,7 @@ fn handle_dismiss_historic(ctx: &BridgeContext) {
     {
         let mut shared = ctx.skins.shared.lock_safe();
         shared.historic_mode_active = false;
-        shared.historic_skin_id = None;
+        shared.historic_selection = None;
         shared.historic_first_detection_done = false;
     }
     log_info!("[bridge] Historic mode dismissed via popup close button");

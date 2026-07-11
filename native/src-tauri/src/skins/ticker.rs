@@ -29,8 +29,8 @@ use tokio::time::Instant as TokioInstant;
 use crate::lcu;
 use crate::skins::features::special;
 use crate::skins::lcu_ext::{self, ChampionSkinCache, DEFAULT_CACHE_TTL};
-use crate::skins::slog::{log_error, log_info};
-use crate::skins::state::SkinsShared;
+use crate::skins::slog::{log_error, log_info, log_warn};
+use crate::skins::state::{HistoricSelection, SkinsShared};
 use crate::skins::{trigger, SkinsState};
 use crate::LockExt;
 
@@ -341,29 +341,54 @@ fn is_chroma_id(skin_id: i64, cache: Option<&ChampionSkinCache>) -> bool {
 /// `SkinNameResolver.resolve_injection_name` — historic > random > hovered
 /// priority, `"skin_{id}"`/`"chroma_{id}"` token format.
 ///
-/// DEVIATION (flagged for the lead): Python's `historic_skin_id` can also
-/// hold a `"path:..."` custom-mod string (see
-/// `ui/handlers/historic_mode_handler.py::historic_skin_id = historic_value`)
-/// — a genuinely different code path from the plain skin/chroma-ID case this
-/// function ports. `SkinsShared.historic_skin_id` is typed `Option<i64>`
-/// (fixed before this milestone, read by `bridge/protocol.rs`'s
-/// `HistoricStateMsg` and written from `bridge/handlers.rs`/`features/chroma.rs`/
-/// `features/random.rs` — all out of this milestone's file scope), so it
-/// cannot represent that case here. Only the skin/chroma-ID branch is ported;
-/// the custom-mod-path branch is a known gap until a follow-up widens the
-/// field (and updates every reader/writer above in lockstep).
+/// RECONCILED (was "DEVIATION flagged for the lead"): `SkinsShared` now has
+/// `historic_selection: Option<HistoricSelection>` (was `historic_skin_id:
+/// Option<i64>`), so the `"path:..."` custom-mod case has a home. Ported from
+/// `skin_name_resolver.py`'s custom-mod branch: extract the base skin ID from
+/// the mod's `"skins/{skin_id}/..."` relative path (falling back to the
+/// locked/hovered champion's base skin on a malformed path) and return
+/// `"skin_{id}"` — same as Python, this only resolves a NAME for the base
+/// skin ZIP; the actual custom-mod file is picked up independently by
+/// `trigger::auto_select_historic_custom_mod`, which re-reads `historic.json`
+/// itself and populates `selected_custom_mod` before injection runs, so both
+/// paths end up flowing through the one custom-mod injection code path in
+/// `trigger.rs` (no parallel copy here).
 pub fn resolve_injection_name(shared: &SkinsShared, cache: Option<&ChampionSkinCache>) -> Option<String> {
     // Historic mode override.
     if shared.historic_mode_active {
-        if let Some(hist_id) = shared.historic_skin_id {
-            // Python's historic/random branches check plain `chroma_id_map`
-            // membership (no special-forms fallback) — NOT `is_base_skin`'s
-            // richer `is_chroma_id`. Preserved verbatim: only the hovered-skin
-            // branch below uses `is_chroma_id`.
-            let is_chroma = cache.is_some_and(|c| c.is_chroma(hist_id));
-            let name = if is_chroma { format!("chroma_{hist_id}") } else { format!("skin_{hist_id}") };
-            log_info!("[HISTORIC] Using historic {} ID for injection: {hist_id}", if is_chroma { "chroma" } else { "skin" });
-            return Some(name);
+        match &shared.historic_selection {
+            Some(HistoricSelection::SkinId(hist_id)) => {
+                let hist_id = *hist_id;
+                // Python's historic/random branches check plain `chroma_id_map`
+                // membership (no special-forms fallback) — NOT `is_base_skin`'s
+                // richer `is_chroma_id`. Preserved verbatim: only the hovered-skin
+                // branch below uses `is_chroma_id`.
+                let is_chroma = cache.is_some_and(|c| c.is_chroma(hist_id));
+                let name = if is_chroma { format!("chroma_{hist_id}") } else { format!("skin_{hist_id}") };
+                log_info!("[HISTORIC] Using historic {} ID for injection: {hist_id}", if is_chroma { "chroma" } else { "skin" });
+                return Some(name);
+            }
+            Some(HistoricSelection::CustomMod(path)) => {
+                log_info!("[HISTORIC] Using historic custom mod path for injection: {path}");
+                let normalized = path.replace('\\', "/");
+                let mut parts = normalized.splitn(3, '/');
+                if let (Some("skins"), Some(id_str)) = (parts.next(), parts.next()) {
+                    if let Ok(base_skin_id) = id_str.parse::<i64>() {
+                        log_info!("[HISTORIC] Extracted base skin ID {base_skin_id} from mod path, returning: skin_{base_skin_id}");
+                        return Some(format!("skin_{base_skin_id}"));
+                    }
+                }
+                log_warn!("[HISTORIC] Invalid mod path format, expected 'skins/{{skin_id}}/...': {path}");
+                // Fallback: the locked/hovered champion's base skin.
+                if let Some(champ_id) = shared.locked_champ_id.or(shared.hovered_champ_id) {
+                    let base_skin_id = champ_id * 1000;
+                    log_info!("[HISTORIC] Fallback: Returning default skin for custom mod injection: skin_{base_skin_id}");
+                    return Some(format!("skin_{base_skin_id}"));
+                }
+                log_warn!("[HISTORIC] No champion ID available for custom mod path");
+                return None;
+            }
+            None => {}
         }
     }
 
@@ -473,8 +498,33 @@ mod tests {
         assert_eq!(resolve_injection_name(&shared, Some(&cache)), Some("chroma_103001".to_string()));
 
         shared.historic_mode_active = true;
-        shared.historic_skin_id = Some(103000);
+        shared.historic_selection = Some(HistoricSelection::SkinId(103000));
         assert_eq!(resolve_injection_name(&shared, Some(&cache)), Some("skin_103000".to_string()));
+    }
+
+    #[test]
+    fn resolve_injection_name_historic_custom_mod_extracts_base_skin_id_from_path() {
+        let mut shared = SkinsShared::default();
+        shared.historic_mode_active = true;
+        shared.historic_selection = Some(HistoricSelection::CustomMod("skins/234000/old-aatrox-viego_1.2.0.fantome".to_string()));
+        assert_eq!(resolve_injection_name(&shared, None), Some("skin_234000".to_string()));
+    }
+
+    #[test]
+    fn resolve_injection_name_historic_custom_mod_falls_back_to_champion_base_skin_on_malformed_path() {
+        let mut shared = SkinsShared::default();
+        shared.historic_mode_active = true;
+        shared.locked_champ_id = Some(103);
+        shared.historic_selection = Some(HistoricSelection::CustomMod("not-a-skins-path.fantome".to_string()));
+        assert_eq!(resolve_injection_name(&shared, None), Some("skin_103000".to_string()));
+    }
+
+    #[test]
+    fn resolve_injection_name_historic_custom_mod_returns_none_without_champion_on_malformed_path() {
+        let mut shared = SkinsShared::default();
+        shared.historic_mode_active = true;
+        shared.historic_selection = Some(HistoricSelection::CustomMod("not-a-skins-path.fantome".to_string()));
+        assert_eq!(resolve_injection_name(&shared, None), None);
     }
 
     #[test]

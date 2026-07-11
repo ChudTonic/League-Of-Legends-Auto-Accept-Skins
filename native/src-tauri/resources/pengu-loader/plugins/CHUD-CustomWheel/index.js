@@ -245,7 +245,7 @@
       min-width: 18px !important;
       height: 18px !important;
       padding: 0 5px !important;
-      background: #c89b3c !important;
+      background: #2ea6d6 !important;
       color: #000 !important;
       border-radius: 3px !important;
       font-size: 11px !important;
@@ -322,7 +322,7 @@
 
     /* Modal Content */
     .${PANEL_CLASS} .chroma-modal {
-      background: #010a13;
+      background: #070b16;
       border-radius: 2px;
       box-shadow: 0 0 20px rgba(0, 0, 0, 0.8);
       display: flex;
@@ -336,7 +336,7 @@
       padding: 16px;
       box-sizing: border-box;
       overflow: hidden;
-      color: #f0e6d2;
+      color: #dff3ff;
       height: 520px !important;
       min-height: 420px !important;
       max-height: calc(100vh - 120px) !important;
@@ -389,14 +389,14 @@
       justify-content: space-between;
       gap: 12px;
       padding-bottom: 10px;
-      border-bottom: 1px solid #3c3c41;
+      border-bottom: 1px solid #2a3350;
       margin-bottom: 10px;
       flex-shrink: 0;
     }
 
     .${PANEL_CLASS} .chud-wheel-right-title {
       font-weight: 700;
-      color: #f0e6d2;
+      color: #dff3ff;
       font-size: 13px;
       overflow: hidden;
       text-overflow: ellipsis;
@@ -416,7 +416,7 @@
       width: 18px;
       height: 18px;
       fill: none;
-      stroke: #c8aa6e;
+      stroke: #35e4ff;
       stroke-width: 2;
       stroke-linecap: round;
       stroke-linejoin: round;
@@ -435,7 +435,7 @@
 
     .${PANEL_CLASS} .chud-wheel-summary::-webkit-scrollbar { width: 6px; }
     .${PANEL_CLASS} .chud-wheel-summary::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
-    .${PANEL_CLASS} .chud-wheel-summary::-webkit-scrollbar-thumb { background: #5b5a56; border-radius: 3px; }
+    .${PANEL_CLASS} .chud-wheel-summary::-webkit-scrollbar-thumb { background: #3d4a68; border-radius: 3px; }
 
     .${PANEL_CLASS} .chud-wheel-summary-row {
       display: grid;
@@ -443,25 +443,25 @@
       align-items: center;
       gap: 12px;
       padding: 8px;
-      border: 1px solid #3c3c41;
+      border: 1px solid #2a3350;
       border-left: 3px solid transparent;
       background: linear-gradient(to right, rgba(30, 35, 40, 0.8), rgba(30, 35, 40, 0.5));
       transition: border-left-color 0.2s ease;
     }
 
     .${PANEL_CLASS} .chud-wheel-summary-row.active {
-      border-left: 3px solid #c8aa6e;
+      border-left: 3px solid #35e4ff;
     }
 
     .${PANEL_CLASS} .chud-wheel-summary-row:hover .chud-wheel-summary-icon {
-      color: #c8aa6e;
+      color: #35e4ff;
     }
 
     .${PANEL_CLASS} .chud-wheel-summary-icon {
       width: 18px;
       height: 18px;
       flex-shrink: 0;
-      color: #5b5a56;
+      color: #3d4a68;
       transition: color 0.2s ease;
     }
 
@@ -484,7 +484,7 @@
     }
 
     .${PANEL_CLASS} .chud-wheel-summary-label {
-      color: #a09b8c;
+      color: #7a93a8;
       font-size: 12px;
       font-weight: 700;
       text-transform: uppercase;
@@ -492,7 +492,7 @@
     }
 
     .${PANEL_CLASS} .chud-wheel-summary-value {
-      color: #f0e6d2;
+      color: #dff3ff;
       font-size: 13px;
       font-weight: 700;
       word-break: break-word;
@@ -543,7 +543,7 @@
       background: rgba(0,0,0,0.3);
     }
     .${PANEL_CLASS} .mod-selection::-webkit-scrollbar-thumb {
-      background: #5b5a56;
+      background: #3d4a68;
       border-radius: 3px;
     }
 
@@ -559,7 +559,7 @@
     /* List Items */
     .${PANEL_CLASS} .mod-selection li {
       background: linear-gradient(to right, rgba(30, 35, 40, 0.9), rgba(30, 35, 40, 0.6));
-      border: 1px solid #3c3c41;
+      border: 1px solid #2a3350;
       border-left: 3px solid transparent;
       padding: 10px;
       transition: all 0.2s ease;
@@ -572,13 +572,13 @@
     .${PANEL_CLASS} .mod-selection li:hover {
       background: linear-gradient(to right, rgba(40, 45, 50, 0.9), rgba(40, 45, 50, 0.7));
       border-color: #5c5c61;
-      border-left-color: #c8aa6e;
+      border-left-color: #35e4ff;
       transform: translateX(2px);
     }
 
     .${PANEL_CLASS} .mod-selection li.selected-row {
-      border-left-color: #c8aa6e;
-      background: linear-gradient(to right, rgba(200, 170, 110, 0.12), rgba(30, 35, 40, 0.6));
+      border-left-color: #35e4ff;
+      background: linear-gradient(to right, rgba(53, 228, 255, 0.12), rgba(30, 35, 40, 0.6));
     }
 
     .${PANEL_CLASS} .mod-selection li .mod-name.none-label {
@@ -595,7 +595,7 @@
     }
     
     .${PANEL_CLASS} .mod-name {
-      color: #f0e6d2;
+      color: #dff3ff;
       font-size: 13px;
       font-weight: 700;
       letter-spacing: 0.5px;
@@ -606,7 +606,7 @@
     }
 
     .${PANEL_CLASS} .mod-description {
-      color: #a09b8c;
+      color: #7a93a8;
       font-size: 11px;
       font-weight: 400;
       line-height: 1.4;
@@ -621,7 +621,7 @@
     }
 
     .${PANEL_CLASS} .mod-loading {
-      color: #a09b8c;
+      color: #7a93a8;
       font-size: 12px;
       text-align: center;
       padding: 20px;
@@ -631,8 +631,8 @@
     /* Action Buttons */
     .${PANEL_CLASS} .mod-select-button {
       background: transparent;
-      border: 1px solid #c8aa6e;
-      color: #c8aa6e;
+      border: 1px solid #35e4ff;
+      color: #35e4ff;
       padding: 4px 10px;
       font-size: 11px;
       font-weight: 700;
@@ -644,15 +644,15 @@
     }
 
     .${PANEL_CLASS} .mod-select-button:hover {
-      background: rgba(200, 170, 110, 0.1);
-      box-shadow: 0 0 8px rgba(200, 170, 110, 0.2);
+      background: rgba(53, 228, 255, 0.1);
+      box-shadow: 0 0 8px rgba(53, 228, 255, 0.2);
     }
 
     .${PANEL_CLASS} .mod-select-button.selected {
-      background: #c8aa6e;
-      color: #010a13;
-      box-shadow: 0 0 10px rgba(200, 170, 110, 0.4);
-      border-color: #c8aa6e;
+      background: #35e4ff;
+      color: #070b16;
+      box-shadow: 0 0 10px rgba(53, 228, 255, 0.4);
+      border-color: #35e4ff;
     }
   `;
 

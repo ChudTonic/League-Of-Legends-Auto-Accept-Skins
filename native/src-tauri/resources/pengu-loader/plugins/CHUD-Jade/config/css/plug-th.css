@@ -10,19 +10,19 @@
   --plug-filter1: drop-shadow(0 0 0 rgb(66 60 40 / 0%));
   --plug-filter2: drop-shadow(0 0 12px rgb(66 59 40 / 80%));
   /*------------------------------------------*/
-  --plug-color1: #423828;
-  --plug-color2: #fcf0d7;
+  --plug-color1: #131a2b;
+  --plug-color2: #dff3ff;
   /*------------------------------------------*/
   --plug-box-shadow1: 0 0 0 rgb(66 58 40 / 0%);
   --plug-box-shadow2: 0 0 12px rgb(66 55 40 / 80%),
     inset 0 0 12px rgb(66 56 40 / 40%);
   /*------------------------------------------*/
-  --plug-color-button: #857a72;
-  --plug-color-buttonDisabled: #72655a;
-  --plug-color-buttonHover: #a89d8f;
+  --plug-color-button: #2ea6d6;
+  --plug-color-buttonDisabled: #2a3350;
+  --plug-color-buttonHover: #ff5cc8;
   /*------------------------------------------*/
-  --plug-selected-item-border: 2px solid #7d644b;
-  --plug-selected-item-box-shadow: 0 0 10px rgb(194 129 68 / 50%);
+  --plug-selected-item-border: 2px solid #2ea6d6;
+  --plug-selected-item-box-shadow: 0 0 10px rgb(53 228 255 / 50%);
   /*------------------------------------------*/
   --plug-smoothGlow-box-shadow0: 0 0 8px rgb(66 55 40 / 40%),
     0 0 12px rgb(66 54 40 / 20%);
@@ -35,15 +35,15 @@
   --plug-smoothGlow-box-shadow100: 0 0 8px rgb(66 58 40 / 40%),
     0 0 12px rgb(66 56 40 / 20%);
   /*------------------------------------------*/
-  --plug-search-input-border: 1px solid #533e1c;
-  --plug-search-inputFocus-border-color: #81602b;
+  --plug-search-input-border: 1px solid #1b5566;
+  --plug-search-inputFocus-border-color: #1e6478;
   --plug-search-inputFocus-box-shadow: 0 0 10px rgba(84, 58, 96, 0.3);
   /*------------------------------------------*/
-  --plug-jsbutton-color: #81602b; /* #81602b lol color*/
+  --plug-jsbutton-color: #1e6478; /* #1e6478 lol color*/
   /*------------------------------------------*/
   --plug-soft-text-glow-kda1: rgb(255 155 0) 0px 0px 17px;
   --plug-soft-text-glow-kda2: rgb(255 143 0 / 37%) 0px 0px 76px;
-  --plug-scrollable-color: #785a28;
+  --plug-scrollable-color: #1b5566;
 }
 
 /*===================================================================================================================*/
@@ -129,19 +129,19 @@
 
 @keyframes ColorUpYellow {
   from {
-    background-color: #423e28;
+    background-color: #131a2b;
   }
   to {
-    background-color: #fcfcd5;
+    background-color: #7ceeff;
   }
 }
 
 @keyframes ColorDownYellow {
   from {
-    background-color: #fcfcd5;
+    background-color: #7ceeff;
   }
   to {
-    background-color: #423e28;
+    background-color: #131a2b;
   }
 }
 

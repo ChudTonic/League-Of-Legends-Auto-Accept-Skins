@@ -61,7 +61,7 @@ pub fn select_random_skin(cache: &ChampionSkinCache) -> Option<(String, i64)> {
 pub fn start_randomization(shared: &mut SkinsShared, cache: &ChampionSkinCache) -> bool {
     if shared.historic_mode_active {
         shared.historic_mode_active = false;
-        shared.historic_skin_id = None;
+        shared.historic_selection = None;
     }
 
     match select_random_skin(cache) {

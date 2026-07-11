@@ -311,7 +311,7 @@
       }
       #${SHOW_SKIN_NAME_ID} .lol-uikit-dialog-frame {
         position: relative;
-        background: #010a13;
+        background: #070b16;
         box-shadow: 0 0 0 1px rgba(1,10,19,0.48);
       }
       #${SHOW_SKIN_NAME_ID} .lol-uikit-dialog-frame::before {
@@ -401,7 +401,7 @@
         height: 24px;
         top: 8px;
         right: 8px;
-        background-color: #0a1428;
+        background-color: #0b1120;
         background-size: 18px 18px;
         background-position: center;
         border-radius: 2px;
@@ -558,8 +558,8 @@
       "--plug-filter2",
       "drop-shadow(0 0 12px rgb(66 59 40 / 80%))"
     );
-    contentBlock.style.setProperty("--plug-color1", "#423828");
-    contentBlock.style.setProperty("--plug-color2", "#fcf0d7");
+    contentBlock.style.setProperty("--plug-color1", "#131a2b");
+    contentBlock.style.setProperty("--plug-color2", "#dff3ff");
     contentBlock.style.setProperty(
       "--plug-box-shadow1",
       "0 0 0 rgb(66 58 40 / 0%)"
@@ -568,16 +568,16 @@
       "--plug-box-shadow2",
       "0 0 12px rgb(66 55 40 / 80%), inset 0 0 12px rgb(66 56 40 / 40%)"
     );
-    contentBlock.style.setProperty("--plug-color-button", "#857a72");
-    contentBlock.style.setProperty("--plug-color-buttonDisabled", "#72655a");
-    contentBlock.style.setProperty("--plug-color-buttonHover", "#a89d8f");
+    contentBlock.style.setProperty("--plug-color-button", "#2ea6d6");
+    contentBlock.style.setProperty("--plug-color-buttonDisabled", "#2a3350");
+    contentBlock.style.setProperty("--plug-color-buttonHover", "#ff5cc8");
     contentBlock.style.setProperty(
       "--plug-selected-item-border",
-      "2px solid #7d644b"
+      "2px solid #2ea6d6"
     );
     contentBlock.style.setProperty(
       "--plug-selected-item-box-shadow",
-      "0 0 10px rgb(194 129 68 / 50%)"
+      "0 0 10px rgb(53 228 255 / 50%)"
     );
     contentBlock.style.setProperty(
       "--plug-smoothGlow-box-shadow0",
@@ -601,17 +601,17 @@
     );
     contentBlock.style.setProperty(
       "--plug-search-input-border",
-      "1px solid #533e1c"
+      "1px solid #1b5566"
     );
     contentBlock.style.setProperty(
       "--plug-search-inputFocus-border-color",
-      "#81602b"
+      "#1e6478"
     );
     contentBlock.style.setProperty(
       "--plug-search-inputFocus-box-shadow",
       "0 0 10px rgba(84, 58, 96, 0.3)"
     );
-    contentBlock.style.setProperty("--plug-jsbutton-color", "#81602b");
+    contentBlock.style.setProperty("--plug-jsbutton-color", "#1e6478");
     contentBlock.style.setProperty(
       "--plug-soft-text-glow-kda1",
       "rgb(255 155 0) 0px 0px 17px"
@@ -620,7 +620,7 @@
       "--plug-soft-text-glow-kda2",
       "rgb(255 143 0 / 37%) 0px 0px 76px"
     );
-    contentBlock.style.setProperty("--plug-scrollable-color", "#785a28");
+    contentBlock.style.setProperty("--plug-scrollable-color", "#1b5566");
 
     // Set regular CSS properties
     Object.assign(contentBlock.style, {
@@ -669,8 +669,8 @@
       "--plug-filter2",
       "drop-shadow(0 0 12px rgb(66 59 40 / 80%))"
     );
-    subBorder.style.setProperty("--plug-color1", "#423828");
-    subBorder.style.setProperty("--plug-color2", "#fcf0d7");
+    subBorder.style.setProperty("--plug-color1", "#131a2b");
+    subBorder.style.setProperty("--plug-color2", "#dff3ff");
     subBorder.style.setProperty(
       "--plug-box-shadow1",
       "0 0 0 rgb(66 58 40 / 0%)"
@@ -679,16 +679,16 @@
       "--plug-box-shadow2",
       "0 0 12px rgb(66 55 40 / 80%), inset 0 0 12px rgb(66 56 40 / 40%)"
     );
-    subBorder.style.setProperty("--plug-color-button", "#857a72");
-    subBorder.style.setProperty("--plug-color-buttonDisabled", "#72655a");
-    subBorder.style.setProperty("--plug-color-buttonHover", "#a89d8f");
+    subBorder.style.setProperty("--plug-color-button", "#2ea6d6");
+    subBorder.style.setProperty("--plug-color-buttonDisabled", "#2a3350");
+    subBorder.style.setProperty("--plug-color-buttonHover", "#ff5cc8");
     subBorder.style.setProperty(
       "--plug-selected-item-border",
-      "2px solid #7d644b"
+      "2px solid #2ea6d6"
     );
     subBorder.style.setProperty(
       "--plug-selected-item-box-shadow",
-      "0 0 10px rgb(194 129 68 / 50%)"
+      "0 0 10px rgb(53 228 255 / 50%)"
     );
     subBorder.style.setProperty(
       "--plug-smoothGlow-box-shadow0",
@@ -712,17 +712,17 @@
     );
     subBorder.style.setProperty(
       "--plug-search-input-border",
-      "1px solid #533e1c"
+      "1px solid #1b5566"
     );
     subBorder.style.setProperty(
       "--plug-search-inputFocus-border-color",
-      "#81602b"
+      "#1e6478"
     );
     subBorder.style.setProperty(
       "--plug-search-inputFocus-box-shadow",
       "0 0 10px rgba(84, 58, 96, 0.3)"
     );
-    subBorder.style.setProperty("--plug-jsbutton-color", "#81602b");
+    subBorder.style.setProperty("--plug-jsbutton-color", "#1e6478");
     subBorder.style.setProperty(
       "--plug-soft-text-glow-kda1",
       "rgb(255 155 0) 0px 0px 17px"
@@ -731,7 +731,7 @@
       "--plug-soft-text-glow-kda2",
       "rgb(255 143 0 / 37%) 0px 0px 76px"
     );
-    subBorder.style.setProperty("--plug-scrollable-color", "#785a28");
+    subBorder.style.setProperty("--plug-scrollable-color", "#1b5566");
 
     // Set regular CSS properties (subBorder will be styled by CSS rules)
     Object.assign(subBorder.style, {

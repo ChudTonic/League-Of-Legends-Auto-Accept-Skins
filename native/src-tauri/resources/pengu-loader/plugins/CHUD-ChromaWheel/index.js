@@ -149,7 +149,7 @@
       -webkit-user-select: none;
       list-style-type: none;
       cursor: default;
-      background-image: linear-gradient(0deg,#695625 0,#a9852d 23%,#b88d35 93%,#c8aa6e);
+      background-image: linear-gradient(0deg,#173544 0,#1b5566 23%,#2ea6d6 93%,#35e4ff);
       box-sizing: border-box;
       height: 100%;
       overflow: hidden;
@@ -168,7 +168,7 @@
       display: block;
       background: url(/fe/lol-champ-select/images/config/button-chroma.png) no-repeat;
       background-size: contain;
-      border: 2px solid #010a13;
+      border: 2px solid #070b16;
       border-radius: 50%;
       box-sizing: border-box;
       height: 20px;
@@ -295,7 +295,7 @@
       border-left: 2px solid transparent;
       border-right: 2px solid transparent;
       border-bottom: none;
-      border-image: linear-gradient(to top, #785a28 0, #463714 50%, #463714 100%) 1 stretch;
+      border-image: linear-gradient(to top, #1b5566 0, #0d1420 50%, #0d1420 100%) 1 stretch;
       border-image-slice: 1 1 0 1;
       width: 100%;
       height: 100%;
@@ -310,7 +310,7 @@
 
     .${PANEL_CLASS} .chroma-information {
       background-size: cover;
-      border-bottom: thin solid #463714;
+      border-bottom: thin solid #0d1420;
       flex-grow: 1;
       height: 315px;
       position: relative;
@@ -391,7 +391,7 @@
       pointer-events: all;
       align-items: center;
       border-radius: 50%;
-      box-shadow: 0 0 2px #010a13;
+      box-shadow: 0 0 2px #070b16;
       border: none;
       display: flex;
       height: 26px;
@@ -431,7 +431,7 @@
     .${PANEL_CLASS} .chroma-skin-button .contents {
       pointer-events: all;
       align-items: center;
-      border: 2px solid #010a13;
+      border: 2px solid #070b16;
       border-radius: 50%;
       display: flex;
       height: 18px;
@@ -442,7 +442,7 @@
       max-height: 18px;
       aspect-ratio: 1 / 1; /* Force inner circle to remain perfectly circular */
       justify-content: center;
-      background: linear-gradient(135deg, #27211C 0%, #27211C 50%, #27211C 50%, #27211C 100%);
+      background: linear-gradient(135deg, #0d1420 0%, #0d1420 50%, #0d1420 50%, #0d1420 100%);
       box-shadow: 0 0 0 2px transparent; /* Reserve space for the hover ring so layout never shifts */
       opacity: 1 !important; /* All button contents at 100% opacity always */
       transform: scale(1); /* Override any parent scaling transforms */
@@ -452,7 +452,7 @@
     /* Selected / hover state: just change ring color, thickness is constant so no squeezing */
     .${PANEL_CLASS} .chroma-skin-button.selected .contents,
     .${PANEL_CLASS} .chroma-skin-button:hover .contents {
-      box-shadow: 0 0 0 2px #c89b3c;
+      box-shadow: 0 0 0 2px #2ea6d6;
       transform: scale(1); /* Maintain perfect circle even on hover */
     }
     
@@ -2843,7 +2843,7 @@
         // Use placeholder until Python serves the image
         contents.style.background = "";
         contents.style.backgroundImage = "";
-        contents.style.backgroundColor = "#1e2328"; // Dark placeholder
+        contents.style.backgroundColor = "#131a2b"; // Dark placeholder
         contents.style.backgroundSize = "cover";
         contents.style.backgroundPosition = "center";
         contents.style.backgroundRepeat = "no-repeat";
@@ -2861,7 +2861,7 @@
         if (isDefaultButton) {
           // Base/default button: use the original gradient (beige with red stripe) - matching official League
           contents.style.background =
-            "linear-gradient(135deg, #f0e6d2, #f0e6d2 48%, #be1e37 0, #be1e37 52%, #f0e6d2 0, #f0e6d2)";
+            "linear-gradient(135deg, #dff3ff, #dff3ff 48%, #be1e37 0, #be1e37 52%, #dff3ff 0, #dff3ff)";
           contents.style.backgroundSize = "cover";
           contents.style.backgroundPosition = "center";
           contents.style.backgroundRepeat = "no-repeat";
@@ -2898,7 +2898,7 @@
           } else {
             // Default fallback color if no color or image is available
             contents.style.background =
-              "linear-gradient(135deg, #f0e6d2 0%, #f0e6d2 50%, #f0e6d2 50%, #f0e6d2 100%)";
+              "linear-gradient(135deg, #dff3ff 0%, #dff3ff 50%, #dff3ff 50%, #dff3ff 100%)";
             contents.style.backgroundSize = "cover";
             contents.style.backgroundPosition = "center";
             contents.style.backgroundRepeat = "no-repeat";
@@ -3216,7 +3216,7 @@
             content.style.setProperty("background-image", "", "important");
             content.style.setProperty(
               "background-color",
-              "#1e2328",
+              "#131a2b",
               "important"
             );
             content.style.setProperty(
@@ -3349,7 +3349,7 @@
             chromaIcon.style.setProperty("background", gradient, "important");
             chromaIcon.style.setProperty(
               "border",
-              "2px solid #c89b3c",
+              "2px solid #2ea6d6",
               "important"
             );
             chromaIcon.style.setProperty("border-radius", "100%", "important");

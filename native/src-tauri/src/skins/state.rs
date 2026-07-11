@@ -18,6 +18,22 @@
 use std::collections::{HashMap, HashSet};
 use std::time::Instant;
 
+/// Historic-mode's in-memory selection for the currently-tracked champion:
+/// either a plain skin/chroma ID, or a custom mod's relative path (mirrors
+/// Python's `historic_skin_id`, which could hold either an `int` or a
+/// `"path:<rel>"` string — see `ui/handlers/historic_mode_handler.py`). The
+/// on-disk union lives in `features::historic::HistoricEntry` (which keeps
+/// the literal `"path:"` prefix for `historic.json` compatibility); this
+/// type is the prefix-stripped runtime form other modules match on. See
+/// `HistoricEntry::to_selection`/`From<&HistoricSelection> for HistoricEntry`
+/// for the conversion between the two.
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub enum HistoricSelection {
+    SkinId(i64),
+    /// Relative mod path (no `"path:"` prefix — that's disk-format bookkeeping).
+    CustomMod(String),
+}
+
 /// Mirrors Python's `selected_custom_mod` dict shape
 /// (`{skin_id, champion_id, mod_name, mod_path, relative_path}`).
 #[derive(Debug, Clone, PartialEq, Eq)]
@@ -152,7 +168,7 @@ pub struct SkinsShared {
 
     // ---- Historic mode (remember last injected unowned skin per champion) ----
     pub historic_mode_active: bool,
-    pub historic_skin_id: Option<i64>,
+    pub historic_selection: Option<HistoricSelection>,
     pub historic_first_detection_done: bool,
 
     // `ui_skin_thread` back-reference dropped — wired via channels in later
@@ -244,7 +260,7 @@ impl Default for SkinsShared {
             random_mode_active: false,
 
             historic_mode_active: false,
-            historic_skin_id: None,
+            historic_selection: None,
             historic_first_detection_done: false,
 
             champion_exchange_triggered: false,
@@ -309,7 +325,7 @@ impl SkinsShared {
 
         // Reset historic mode state.
         self.historic_mode_active = false;
-        self.historic_skin_id = None;
+        self.historic_selection = None;
         self.historic_first_detection_done = false;
 
         // Clear the custom mod selection from the previous game so the
@@ -373,7 +389,7 @@ impl SkinsShared {
         self.random_skin_name = None;
         self.random_skin_id = None;
         self.historic_mode_active = false;
-        self.historic_skin_id = None;
+        self.historic_selection = None;
         self.historic_first_detection_done = false;
         self.ui_skin_id = None;
         self.ui_last_text = None;

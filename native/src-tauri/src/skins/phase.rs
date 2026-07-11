@@ -194,6 +194,12 @@ async fn run(
                     &mut last_phase, &mut null_streak, &mut disconnected,
                     &mut last_locked_champion_id, &mut scraper_cache,
                 ).await;
+                // `_maybe_recover_locked_champ_select_state`: retry the
+                // late-lock bootstrap every poll tick while ChampSelect is
+                // active and nothing's locked yet — covers a lock that
+                // happened between actor start and the first WS session
+                // delta reaching us. A no-op once `own_champion_locked`.
+                bootstrap_late_locked_champion(&skins, &client, &events, &mut last_locked_champion_id, &mut scraper_cache).await;
             }
         }
     }
@@ -219,7 +225,11 @@ async fn handle_input(
 ) {
     match input {
         PhaseInput::Phase(raw) => {
-            process_phase_observation(app, skins, client, events, raw, last_phase, null_streak, disconnected).await;
+            process_phase_observation(
+                app, skins, client, events, raw, last_phase, null_streak, disconnected,
+                last_locked_champion_id, scraper_cache,
+            )
+            .await;
         }
         PhaseInput::HoveredChampion(cid) => {
             let mut shared = skins.shared.lock_safe();
@@ -245,6 +255,8 @@ async fn process_phase_observation(
     last_phase: &mut Option<String>,
     null_streak: &mut u32,
     disconnected: &mut bool,
+    last_locked_champion_id: &mut Option<i64>,
+    scraper_cache: &mut ChampionSkinCache,
 ) {
     let phase = Phase::parse(raw.as_deref());
 
@@ -290,7 +302,7 @@ async fn process_phase_observation(
     }
 
     match &phase {
-        Phase::ChampSelect => champ_select_entry(app, skins, client, events).await,
+        Phase::ChampSelect => champ_select_entry(app, skins, client, events, last_locked_champion_id, scraper_cache).await,
         Phase::Other(s) if s == "FINALIZATION" => {
             log_info!("[phase] Entering FINALIZATION");
             let _ = events.send(PhaseEvent::Finalization);
@@ -380,7 +392,14 @@ fn phase_exit_reset(skins: &Arc<SkinsState>) {
 /// `websocket_event_handler.py`'s `ph == "ChampSelect"` branch, which
 /// detects game mode FIRST specifically so it can decide whether to run the
 /// normal reset or the Swiftplay branch instead.
-async fn champ_select_entry(app: &AppHandle, skins: &Arc<SkinsState>, client: &reqwest::Client, events: &broadcast::Sender<PhaseEvent>) {
+async fn champ_select_entry(
+    app: &AppHandle,
+    skins: &Arc<SkinsState>,
+    client: &reqwest::Client,
+    events: &broadcast::Sender<PhaseEvent>,
+    last_locked_champion_id: &mut Option<i64>,
+    scraper_cache: &mut ChampionSkinCache,
+) {
     let mode = match lcu::cached_auth() {
         Some(auth) => Some(lcu_ext::detect_game_mode(client, &auth).await),
         None => None,
@@ -431,6 +450,62 @@ async fn champ_select_entry(app: &AppHandle, skins: &Arc<SkinsState>, client: &r
     }
 
     let _ = events.send(PhaseEvent::ChampSelectEntered);
+
+    // Late-lock bootstrap: we just reset for a fresh ChampSelect, but if the
+    // app started (or the LCU reconnected) after the local player already
+    // locked, the reset above cleared `locked_champ_id`/`own_champion_locked`
+    // and nothing will re-set them — the WS fan-out only delivers session
+    // *deltas*, and there won't be one for a lock that already happened.
+    // Proactively check now instead of waiting for the next poll tick.
+    bootstrap_late_locked_champion(skins, client, events, last_locked_champion_id, scraper_cache).await;
+}
+
+/// `_needs_late_lock_bootstrap`/`_maybe_recover_locked_champ_select_state`'s
+/// guard, extracted as a pure predicate so it's unit-testable without an LCU
+/// connection: only worth fetching the session if we're actually sitting in
+/// ChampSelect and haven't already recorded a lock.
+fn should_attempt_late_lock_bootstrap(phase: Option<&str>, own_champion_locked: bool) -> bool {
+    phase == Some("ChampSelect") && !own_champion_locked
+}
+
+/// Ported from `lcu_monitor_thread.py::_bootstrap_late_locked_champion` /
+/// `_maybe_recover_locked_champ_select_state`: if the app starts (or the LCU
+/// reconnects) while champ select is already underway and the local player
+/// has already locked, the phase actor only reacts to WS session *deltas*
+/// and never sees the pre-existing lock — that game's skins never inject.
+/// Proactively fetches the session and, if it shows a lock we haven't
+/// recorded, runs it through the exact same `process_session` pipeline the
+/// WS fan-out uses instead of a parallel copy (Python had three
+/// near-duplicate copies of the lock-handling logic — see `process_session`'s
+/// doc comment). Called from `champ_select_entry` (covers "already locked
+/// when we first observe ChampSelect") and every poll tick (covers a lock
+/// that lands between actor start and the first WS session delta); the
+/// `should_attempt_late_lock_bootstrap` guard makes both call sites a cheap
+/// no-op once `own_champion_locked` is true.
+async fn bootstrap_late_locked_champion(
+    skins: &Arc<SkinsState>,
+    client: &reqwest::Client,
+    events: &broadcast::Sender<PhaseEvent>,
+    last_locked_champion_id: &mut Option<i64>,
+    scraper_cache: &mut ChampionSkinCache,
+) {
+    let (phase, own_champion_locked) = {
+        let shared = skins.shared.lock_safe();
+        (shared.phase.clone(), shared.own_champion_locked)
+    };
+    if !should_attempt_late_lock_bootstrap(phase.as_deref(), own_champion_locked) {
+        return;
+    }
+
+    let Some(auth) = lcu::cached_auth() else { return };
+    let Some(raw) =
+        lcu_ext::shared_cache().get(client, &auth, "/lol-champ-select/v1/session", lcu_ext::DEFAULT_CACHE_TTL).await
+    else {
+        return;
+    };
+    let Ok(session) = serde_json::from_value::<SessionData>(raw) else { return };
+
+    process_session(skins, client, events, session, last_locked_champion_id, scraper_cache).await;
 }
 
 /// Champion lock/exchange detection + the consolidated "on champion locked"
@@ -560,7 +635,7 @@ fn apply_champion_exchange(shared: &mut SkinsShared, new_champion_id: i64) {
     shared.locked_champ_timestamp = now_unix_secs();
     shared.own_champion_locked = true;
     shared.historic_mode_active = false;
-    shared.historic_skin_id = None;
+    shared.historic_selection = None;
     shared.historic_first_detection_done = false;
     shared.champion_exchange_triggered = true;
 }
@@ -574,7 +649,7 @@ fn apply_own_champion_locked(shared: &mut SkinsShared, old_champion_id: Option<i
     shared.own_champion_locked = true;
     if should_trigger {
         shared.historic_mode_active = false;
-        shared.historic_skin_id = None;
+        shared.historic_selection = None;
         shared.historic_first_detection_done = false;
     }
     should_trigger
@@ -611,5 +686,57 @@ mod tests {
 
         // A genuine champion change re-triggers.
         assert!(apply_own_champion_locked(&mut shared, Some(103), 238));
+    }
+
+    #[test]
+    fn late_lock_bootstrap_only_attempted_in_champ_select_while_unlocked() {
+        assert!(should_attempt_late_lock_bootstrap(Some("ChampSelect"), false));
+        assert!(!should_attempt_late_lock_bootstrap(Some("ChampSelect"), true), "already locked - no-op");
+        assert!(!should_attempt_late_lock_bootstrap(Some("InProgress"), false), "wrong phase - no-op");
+        assert!(!should_attempt_late_lock_bootstrap(None, false), "no phase yet - no-op");
+    }
+
+    /// Exercises the SAME pipeline `bootstrap_late_locked_champion` calls
+    /// after its proactive session fetch, fed a session whose local player
+    /// cell already shows a completed pick — the exact shape a late-lock
+    /// bootstrap's fetch would see for a champion locked before the phase
+    /// actor ever observed a WS session delta. Proves the reused-not-duplicated
+    /// path actually detects a pre-existing lock end to end.
+    #[tokio::test]
+    async fn process_session_detects_a_pre_existing_lock_like_a_late_bootstrap_fetch_would() {
+        use crate::skins::lcu_ext::{ActionData, Cell};
+
+        let skins = Arc::new(SkinsState::new());
+        let client = reqwest::Client::new();
+        let (events, mut rx) = broadcast::channel(8);
+        let mut last_locked_champion_id: Option<i64> = None;
+        let mut scraper_cache = ChampionSkinCache::default();
+
+        let session = SessionData {
+            actions: Some(vec![vec![ActionData {
+                id: Some(1),
+                kind: Some("pick".to_string()),
+                completed: Some(true),
+                actor_cell_id: Some(0),
+                champion_id: Some(103),
+            }]]),
+            my_team: Some(vec![Cell { cell_id: Some(0), champion_id: Some(103), ..Default::default() }]),
+            their_team: None,
+            local_player_cell_id: Some(0),
+            is_spectating: None,
+            queue_id: None,
+        };
+
+        process_session(&skins, &client, &events, session, &mut last_locked_champion_id, &mut scraper_cache).await;
+
+        let shared = skins.shared.lock_safe();
+        assert_eq!(shared.locked_champ_id, Some(103));
+        assert!(shared.own_champion_locked);
+        assert_eq!(last_locked_champion_id, Some(103));
+
+        match rx.try_recv().expect("ChampionLocked should fire the same as a live WS lock") {
+            PhaseEvent::ChampionLocked { champion_id } => assert_eq!(champion_id, 103),
+            other => panic!("expected ChampionLocked, got {other:?}"),
+        }
     }
 }

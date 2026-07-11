@@ -143,8 +143,8 @@
   function getCSSRules() {
     return `
     @font-face {
-      font-family: "Beaufort for LOL";
-      src: url("http://127.0.0.1:${BRIDGE_PORT}/asset/BeaufortforLOL-Regular.ttf") format("truetype");
+      font-family: "JetBrains Mono";
+      src: url("http://127.0.0.1:${BRIDGE_PORT}/asset/JetBrainsMono-Regular.ttf") format("truetype");
       font-weight: normal;
       font-style: normal;
       font-display: swap;
@@ -159,8 +159,8 @@
       left: 50%;
       transform: translate(-50%, -50%);
       width: 380px;
-      background-color: #010a13;
-      border: 2px solid #463714;
+      background-color: #070b16;
+      border: 2px solid #0d1420;
       box-shadow: 0 0 0 1px rgba(1,10,19,.8), 0 8px 30px rgba(0,0,0,.7), inset 0 1px 0 rgba(255,255,255,.03);
       z-index: 9998;
       display: none;
@@ -184,8 +184,8 @@
 
     .party-header h3 {
       margin: 0;
-      color: #f0e6d2;
-      font-family: var(--font-display), "Beaufort for LOL", Arial, sans-serif;
+      color: #dff3ff;
+      font-family: var(--font-display), "JetBrains Mono", Arial, monospace;
       font-size: 18px;
       font-weight: 700;
       letter-spacing: .05em;
@@ -200,8 +200,8 @@
       letter-spacing: .025em;
     }
 
-    .party-status.offline { color: #5b5a56; }
-    .party-status.online  { color: #0acbe6; }
+    .party-status.offline { color: #3d4a68; }
+    .party-status.online  { color: #35e4ff; }
 
     /* Body — matches .lol-friend-finder-modal .modal-body */
     .party-content {
@@ -214,7 +214,7 @@
 
     /* Description text */
     .party-description {
-      color: #a09b8c;
+      color: #7a93a8;
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 12px;
       line-height: 16px;
@@ -231,8 +231,8 @@
     }
 
     .party-section-title {
-      color: #a09b8c;
-      font-family: var(--font-display), "Beaufort for LOL", Arial, sans-serif;
+      color: #7a93a8;
+      font-family: var(--font-display), "JetBrains Mono", Arial, monospace;
       font-size: 12px;
       font-weight: 700;
       letter-spacing: .05em;
@@ -252,9 +252,9 @@
     .add-peer-input {
       flex: 1;
       background: rgba(0,0,0,.7);
-      border: thin solid #3c3c41;
+      border: thin solid #2a3350;
       padding: 7px 10px;
-      color: #f0e6d2;
+      color: #dff3ff;
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 12px;
       line-height: 18px;
@@ -264,7 +264,7 @@
     .token-input {
       font-family: monospace;
       font-size: 11px;
-      color: #a09b8c;
+      color: #7a93a8;
       overflow: hidden;
       text-overflow: ellipsis;
       white-space: nowrap;
@@ -272,19 +272,19 @@
 
     .token-input:focus,
     .add-peer-input:focus {
-      border-color: #c89b3c;
+      border-color: #2ea6d6;
     }
 
     .add-peer-input::placeholder {
-      color: #5b5a56;
+      color: #3d4a68;
     }
 
     /* Buttons — matches lol-uikit-flat-button-secondary */
     .copy-btn, .add-btn {
       background: transparent;
-      border: thin solid #5b5a56;
+      border: thin solid #3d4a68;
       padding: 7px 16px;
-      color: #cdbe91;
+      color: #7ceeff;
       cursor: pointer;
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 12px;
@@ -296,18 +296,18 @@
     }
 
     .copy-btn:hover, .add-btn:hover {
-      border-color: #c8aa6e;
-      color: #f0e6d2;
+      border-color: #35e4ff;
+      color: #dff3ff;
     }
 
     .copy-btn:active, .add-btn:active {
-      color: #463714;
-      border-color: #463714;
+      color: #0d1420;
+      border-color: #0d1420;
     }
 
     .copy-btn.copied {
-      border-color: #0acbe6;
-      color: #0acbe6;
+      border-color: #35e4ff;
+      color: #35e4ff;
     }
 
     .add-btn:disabled, .add-peer-input:disabled {
@@ -326,26 +326,26 @@
       font-weight: 700;
       letter-spacing: .1em;
       text-transform: uppercase;
-      border: thin solid #c8aa6e;
+      border: thin solid #35e4ff;
       transition: background .3s, color .3s, border-color .3s;
     }
 
     .party-toggle-btn.enable {
-      background: linear-gradient(to bottom, #1e2328, #1e2328);
-      border-color: #c8aa6e;
-      color: #cdbe91;
+      background: linear-gradient(to bottom, #131a2b, #131a2b);
+      border-color: #35e4ff;
+      color: #7ceeff;
     }
 
     .party-toggle-btn.enable:hover {
-      background: linear-gradient(to bottom, #1e2328, #1e2328);
-      border-color: #c8aa6e;
-      color: #f0e6d2;
+      background: linear-gradient(to bottom, #131a2b, #131a2b);
+      border-color: #35e4ff;
+      color: #dff3ff;
     }
 
     .party-toggle-btn.disable {
       background: transparent;
-      border-color: #5b5a56;
-      color: #a09b8c;
+      border-color: #3d4a68;
+      color: #7a93a8;
     }
 
     .party-toggle-btn.disable:hover {
@@ -363,12 +363,12 @@
       max-height: 200px;
       overflow-y: auto;
       scrollbar-width: thin;
-      scrollbar-color: #463714 transparent;
+      scrollbar-color: #0d1420 transparent;
     }
 
     .peers-list::-webkit-scrollbar { width: 6px; }
     .peers-list::-webkit-scrollbar-track { background: transparent; }
-    .peers-list::-webkit-scrollbar-thumb { background: #463714; border-radius: 3px; }
+    .peers-list::-webkit-scrollbar-thumb { background: #0d1420; border-radius: 3px; }
 
     .peer-item {
       display: flex;
@@ -387,7 +387,7 @@
     }
 
     .peer-name {
-      color: #a09b8c;
+      color: #7a93a8;
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 12px;
       line-height: 16px;
@@ -397,28 +397,28 @@
     }
 
     .peer-item:hover .peer-name {
-      color: #f0e6d2;
+      color: #dff3ff;
     }
 
     .peer-status {
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 10px;
-      color: #5b5a56;
+      color: #3d4a68;
       line-height: 14px;
     }
 
-    .peer-status.in-lobby { color: #0acbe6; }
+    .peer-status.in-lobby { color: #35e4ff; }
 
     .peer-skin {
       font-size: 10px;
-      color: #c89b3c;
+      color: #2ea6d6;
       line-height: 14px;
     }
 
     .peer-remove {
       background: none;
       border: none;
-      color: #5b5a56;
+      color: #3d4a68;
       cursor: pointer;
       padding: 4px 8px;
       font-size: 14px;
@@ -428,7 +428,7 @@
     .peer-remove:hover { color: #ff4646; }
 
     .no-peers {
-      color: #5b5a56;
+      color: #3d4a68;
       font-family: var(--font-body), Arial, sans-serif;
       font-size: 12px;
       text-align: center;
@@ -443,8 +443,8 @@
       width: 28px;
       height: 28px;
       border-radius: 50%;
-      background: #1e2328;
-      border: 2px solid #463714;
+      background: #131a2b;
+      border: 2px solid #0d1420;
       cursor: pointer;
       display: flex;
       align-items: center;
@@ -455,11 +455,11 @@
     }
 
     .party-close-btn:hover {
-      border-color: #c8aa6e;
+      border-color: #35e4ff;
     }
 
     .party-close-btn:active {
-      border-color: #785a28;
+      border-color: #1b5566;
     }
 
     .party-close-btn::before,
@@ -468,7 +468,7 @@
       position: absolute;
       width: 12px;
       height: 2px;
-      background: #a09b8c;
+      background: #7a93a8;
       transition: background .2s;
     }
 
@@ -477,7 +477,7 @@
 
     .party-close-btn:hover::before,
     .party-close-btn:hover::after {
-      background: #f0e6d2;
+      background: #dff3ff;
     }
 
     /* Loading state */
@@ -490,8 +490,8 @@
       display: inline-block;
       width: 12px;
       height: 12px;
-      border: 2px solid rgba(200, 170, 110, 0.3);
-      border-top-color: #c8aa6e;
+      border: 2px solid rgba(53, 228, 255, 0.3);
+      border-top-color: #35e4ff;
       border-radius: 50%;
       animation: chud-party-spin 0.8s linear infinite;
     }
@@ -508,7 +508,7 @@
     }
 
     .success-msg {
-      color: #0acbe6;
+      color: #35e4ff;
       font-size: 11px;
       margin-top: 8px;
     }
@@ -520,7 +520,7 @@
     }
 
     #${LOBBY_BUTTON_ID} .party-mode-icon {
-      background-color: #c8aa6e;
+      background-color: #35e4ff;
       cursor: pointer;
       display: block;
       height: inherit;
@@ -530,15 +530,15 @@
     }
 
     #${LOBBY_BUTTON_ID}:hover .party-mode-icon {
-      background-color: #f0e6d2;
+      background-color: #dff3ff;
     }
 
     #${LOBBY_BUTTON_ID}:active .party-mode-icon {
-      background-color: #463714;
+      background-color: #0d1420;
     }
 
     #${LOBBY_BUTTON_ID}.active .party-mode-icon {
-      background-color: #0acbe6;
+      background-color: #35e4ff;
     }
 
     #${LOBBY_BUTTON_ID}.connected .party-mode-icon {

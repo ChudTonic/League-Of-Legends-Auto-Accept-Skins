@@ -311,34 +311,34 @@ import { settingsUtils } from "https://unpkg.com/blank-settings-utils@latest/Set
                 settingsContainer.innerHTML = `
                     <div class="lol-settings-general-row">
                         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${this.settings.ChudAA ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${this.settings.ChudAA ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('AAMatchFound')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${this.settings.hideModal ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${this.settings.hideModal ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('AAHideModal')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${this.settings.muteSound ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${this.settings.muteSound ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('AAMuteSound')}
                                     </p>
                                 </div>

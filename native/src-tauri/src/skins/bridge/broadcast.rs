@@ -12,6 +12,8 @@
 
 #![allow(dead_code)]
 
+use crate::skins::state::HistoricSelection;
+
 use super::protocol::{
     ChampionLockedMsg, ChromaStateMsg, CustomModStateMsg, HistoricStateMsg, PartyStateMsg, PhaseChangeMsg,
     RandomModeStateMsg, SkinStateMsg, SkipBaseSkinMsg,
@@ -35,10 +37,20 @@ impl BridgeHandle {
         self.broadcast_json(serde_json::to_value(&msg).unwrap_or_default());
     }
 
-    /// `Broadcaster.broadcast_historic_state`. `historic_skin_name`
-    /// resolution (custom-mod-path exclusion, chroma-vs-skin lookup) is the
-    /// caller's job — see `handlers::historic` for that logic.
-    pub fn broadcast_historic_state(&self, active: bool, historic_skin_id: Option<i64>, historic_skin_name: Option<String>) {
+    /// `Broadcaster.broadcast_historic_state`. `resolved_skin_name`
+    /// resolution (chroma-vs-skin lookup) for the `SkinId` case is the
+    /// caller's job — see `handlers::historic` for that logic. A `CustomMod`
+    /// selection has no separate name to resolve (it IS the path), so it
+    /// overrides `resolved_skin_name` and reports `historicSkinId: null` —
+    /// the wire message keeps its field NAMES (`historicSkinId`/
+    /// `historicSkinName`) unchanged for the JS plugin contract, but a
+    /// custom mod can't fit an integer ID field.
+    pub fn broadcast_historic_state(&self, active: bool, selection: Option<&HistoricSelection>, resolved_skin_name: Option<String>) {
+        let (historic_skin_id, historic_skin_name) = match selection {
+            Some(HistoricSelection::SkinId(id)) => (Some(*id), resolved_skin_name),
+            Some(HistoricSelection::CustomMod(path)) => (None, Some(path.clone())),
+            None => (None, None),
+        };
         let msg = HistoricStateMsg::new(active, historic_skin_id, historic_skin_name);
         self.broadcast_json(serde_json::to_value(&msg).unwrap_or_default());
     }

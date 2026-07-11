@@ -12,6 +12,13 @@
   const CHROMA_CONTAINER_CLASS = "lpp-chroma-container";
   const VISIBLE_OFFSETS = new Set([0, 1, 2, 3, 4]);
 
+  // Welcome popup
+  const WELCOME_STYLE_ID = "chud-welcome-css-inline";
+  const WELCOME_DIALOG_ID = "chud-welcome-dialog";
+  const WELCOME_STORAGE_KEY = "chud_welcome_dismissed";
+  const WELCOME_DISCORD_URL = "https://discord.gg/a2QTg7btaT";
+  const WELCOME_GITHUB_URL = "https://github.com/jivy26/Chud";
+
   function waitForBridge() {
     return new Promise((resolve, reject) => {
       const timeout = 10000;
@@ -191,7 +198,7 @@
     }
 
     .skin-selection-carousel-container .skin-selection-carousel .skin-selection-item.skin-selection-item-selected {
-      background: #3c3c41 !important;
+      background: #2a3350 !important;
     }
 
     .skin-selection-carousel-container .skin-selection-carousel .skin-selection-item.skin-selection-item-selected .skin-selection-thumbnail {
@@ -203,7 +210,7 @@
       position: absolute;
       inset: -2px;
       border: 2px solid transparent;
-      border-image-source: linear-gradient(0deg, #4f4f54 0%, #3c3c41 50%, #29272b 100%);
+      border-image-source: linear-gradient(0deg, #4f4f54 0%, #2a3350 50%, #29272b 100%);
       border-image-slice: 1;
       border-radius: inherit;
       box-sizing: border-box;
@@ -213,7 +220,7 @@
 
     .skin-selection-carousel .skin-selection-item.skin-carousel-offset-2 .lpp-skin-border {
       border: 2px solid transparent;
-      border-image-source: linear-gradient(0deg, #c8aa6e 0%, #c89b3c 44%, #a07b32 59%, #785a28 100%);
+      border-image-source: linear-gradient(0deg, #35e4ff 0%, #2ea6d6 44%, #2389a8 59%, #1b5566 100%);
       border-image-slice: 1;
       box-shadow: inset 0 0 0 1px rgba(1, 10, 19, 0.6);
     }
@@ -221,7 +228,7 @@
     /* Golden border on hover for all skins (matching official client) */
     .skin-selection-carousel .skin-selection-item:not(.skin-selection-item-selected):hover .lpp-skin-border {
       border: 2px solid transparent;
-      border-image-source: linear-gradient(0deg, #c8aa6e 0%, #c89b3c 44%, #a07b32 59%, #785a28 100%);
+      border-image-source: linear-gradient(0deg, #35e4ff 0%, #2ea6d6 44%, #2389a8 59%, #1b5566 100%);
       border-image-slice: 1;
       box-shadow: inset 0 0 0 1px rgba(1, 10, 19, 0.6);
     }
@@ -286,6 +293,238 @@
     styleTag.textContent = INLINE_RULES;
     document.head.appendChild(styleTag);
     log.info("inline styles applied");
+  }
+
+  const WELCOME_STYLES = `
+    #${WELCOME_DIALOG_ID} {
+      position: fixed;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      z-index: 10050;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-backdrop {
+      position: absolute;
+      top: 0;
+      left: 0;
+      width: 100%;
+      height: 100%;
+      background: rgba(7, 11, 22, 0.75);
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-panel {
+      position: relative;
+      width: 360px;
+      max-width: 90vw;
+      background: #0b1120;
+      border: 1px solid #35e4ff;
+      border-radius: 6px;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.6), 0 0 30px rgba(53, 228, 255, 0.15);
+      padding: 24px;
+      text-align: center;
+      font-family: "JetBrains Mono", monospace;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-logo {
+      width: 56px;
+      height: 56px;
+      margin: 0 auto 12px;
+      display: block;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-title {
+      color: #35e4ff;
+      font-size: 20px;
+      font-weight: 700;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-message {
+      color: #dff3ff;
+      font-size: 13px;
+      line-height: 1.5;
+      margin-bottom: 18px;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-links {
+      display: flex;
+      gap: 10px;
+      margin-bottom: 18px;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-link {
+      flex: 1;
+      display: inline-block;
+      padding: 8px 0;
+      border-radius: 4px;
+      font-size: 12px;
+      font-weight: 700;
+      text-decoration: none;
+      cursor: pointer;
+      transition: filter 0.2s, opacity 0.2s;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-link:hover {
+      filter: brightness(1.15);
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-link-discord {
+      background: linear-gradient(90deg, #35e4ff, #ff5cc8);
+      color: #070b16;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-link-github {
+      background: transparent;
+      border: 1px solid #35e4ff;
+      color: #35e4ff;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-footer {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-checkbox-label {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      color: #7a93a8;
+      font-size: 11px;
+      cursor: pointer;
+      user-select: none;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-ok {
+      padding: 6px 20px;
+      border-radius: 4px;
+      border: none;
+      background: #35e4ff;
+      color: #070b16;
+      font-family: "JetBrains Mono", monospace;
+      font-size: 12px;
+      font-weight: 700;
+      cursor: pointer;
+      transition: background 0.2s;
+    }
+
+    #${WELCOME_DIALOG_ID} .chud-welcome-ok:hover {
+      background: #7ceeff;
+    }
+  `;
+
+  function injectWelcomeStyles() {
+    if (document.getElementById(WELCOME_STYLE_ID)) {
+      return;
+    }
+
+    const styleTag = document.createElement("style");
+    styleTag.id = WELCOME_STYLE_ID;
+    styleTag.textContent = WELCOME_STYLES;
+    document.head.appendChild(styleTag);
+  }
+
+  function isWelcomeDismissed() {
+    try {
+      return localStorage.getItem(WELCOME_STORAGE_KEY) === "true";
+    } catch (e) {
+      return false;
+    }
+  }
+
+  function showWelcomePopup(bridgePort) {
+    if (document.getElementById(WELCOME_DIALOG_ID) || isWelcomeDismissed()) {
+      return;
+    }
+
+    injectWelcomeStyles();
+
+    const dialog = document.createElement("div");
+    dialog.id = WELCOME_DIALOG_ID;
+
+    const backdrop = document.createElement("div");
+    backdrop.className = "chud-welcome-backdrop";
+    dialog.appendChild(backdrop);
+
+    const panel = document.createElement("div");
+    panel.className = "chud-welcome-panel";
+
+    const logo = document.createElement("img");
+    logo.className = "chud-welcome-logo";
+    logo.src = `http://127.0.0.1:${bridgePort}/asset/chud_logo.png`;
+    logo.alt = "Chud";
+    panel.appendChild(logo);
+
+    const title = document.createElement("div");
+    title.className = "chud-welcome-title";
+    title.textContent = "Chud";
+    panel.appendChild(title);
+
+    const message = document.createElement("div");
+    message.className = "chud-welcome-message";
+    message.textContent = "Your League skins are unlocked. Pick any skin in champ select.";
+    panel.appendChild(message);
+
+    const links = document.createElement("div");
+    links.className = "chud-welcome-links";
+
+    const discordLink = document.createElement("a");
+    discordLink.className = "chud-welcome-link chud-welcome-link-discord";
+    discordLink.href = WELCOME_DISCORD_URL;
+    discordLink.target = "_blank";
+    discordLink.textContent = "Discord";
+    links.appendChild(discordLink);
+
+    const githubLink = document.createElement("a");
+    githubLink.className = "chud-welcome-link chud-welcome-link-github";
+    githubLink.href = WELCOME_GITHUB_URL;
+    githubLink.target = "_blank";
+    githubLink.textContent = "GitHub";
+    links.appendChild(githubLink);
+
+    panel.appendChild(links);
+
+    const footer = document.createElement("div");
+    footer.className = "chud-welcome-footer";
+
+    const checkboxLabel = document.createElement("label");
+    checkboxLabel.className = "chud-welcome-checkbox-label";
+
+    const checkbox = document.createElement("input");
+    checkbox.type = "checkbox";
+    checkbox.id = "chud-welcome-dismiss-checkbox";
+
+    checkboxLabel.appendChild(checkbox);
+    checkboxLabel.appendChild(document.createTextNode("Do not show again"));
+    footer.appendChild(checkboxLabel);
+
+    const okButton = document.createElement("button");
+    okButton.type = "button";
+    okButton.className = "chud-welcome-ok";
+    okButton.textContent = "OK";
+    okButton.addEventListener("click", () => {
+      if (checkbox.checked) {
+        try {
+          localStorage.setItem(WELCOME_STORAGE_KEY, "true");
+        } catch (e) {
+          // ignore storage failures (e.g. private mode)
+        }
+      }
+      dialog.remove();
+    });
+    footer.appendChild(okButton);
+
+    panel.appendChild(footer);
+    dialog.appendChild(panel);
+    document.body.appendChild(dialog);
+
+    log.info("welcome popup shown");
   }
 
   function ensureBorderFrame(skinItem) {
@@ -649,7 +888,19 @@
 
     const icon = document.createElement("div");
     icon.className = "menu-item-icon";
-    icon.style.webkitMaskImage = `url(http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/chud_emblem.png)`;
+    // Render the actual gold emblem art (not a flat mask silhouette) so the
+    // ornate detail shows. Keep "chud_emblem.png" in the style string so the
+    // existing dedup check (`[style*="chud_emblem.png"]`) still matches.
+    const emblemUrl = `http://127.0.0.1:${window.__chudBridge ? window.__chudBridge.port : 50000}/asset/chud_emblem.png`;
+    icon.style.webkitMaskImage = "none";
+    icon.style.maskImage = "none";
+    icon.style.backgroundColor = "transparent";
+    icon.style.backgroundImage = `url(${emblemUrl})`;
+    icon.style.backgroundSize = "contain";
+    icon.style.backgroundRepeat = "no-repeat";
+    icon.style.backgroundPosition = "center";
+    icon.style.width = "28px";
+    icon.style.height = "28px";
 
     iconWrapper.appendChild(glow);
     iconWrapper.appendChild(icon);
@@ -778,6 +1029,9 @@
       // Subscribe to skip-base-skin messages from the shared bridge
       bridge.subscribe("skip-base-skin", handleSkipBaseSkin);
       bridge.subscribe("phase-change", handlePhaseChangeFromPython);
+
+      // Show the Chud welcome popup once per client session (persisted via localStorage)
+      showWelcomePopup(bridge.port);
 
       interceptChampSelectWebsocket();
       injectInlineRules();

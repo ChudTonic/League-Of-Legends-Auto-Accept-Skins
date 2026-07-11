@@ -336,68 +336,68 @@ const initializeObserver = async () => {
                 settingsContainer.innerHTML = `
                     <div class="lol-settings-general-row">
                         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
-                            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(240, 230, 210, 0.1); border-radius: 4px; border-left: 3px solid #c8aa6e;">
-                                <lol-uikit-icon icon="warning" style="color: #c8aa6e; margin-top: 2px;"></lol-uikit-icon>
+                            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(240, 230, 210, 0.1); border-radius: 4px; border-left: 3px solid #35e4ff;">
+                                <lol-uikit-icon icon="warning" style="color: #35e4ff; margin-top: 2px;"></lol-uikit-icon>
                                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-weight: bold; color: #f0e6d2;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-weight: bold; color: #dff3ff;">
                                         ${LanguageManager.t('restartRequired')}
                                     </p>
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('restartRequiredDesc')}
                                     </p>
                                 </div>
                             </div>
                         
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.regaliaBorderEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.regaliaBorderEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('borderDesc')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.regaliaBackgroundEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.regaliaBackgroundEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('backgroundDesc')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.regaliaBannerEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.regaliaBannerEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('bannerDesc')}
                                     </p>
                                 </div>
                             </div>
 
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.regaliaIconEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.regaliaIconEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('iconDesc')}
                                     </p>
                                 </div>
                             </div>
                             
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.regaliaTitleEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.regaliaTitleEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('TitleDesc')}
                                     </p>
                                 </div>
@@ -405,7 +405,7 @@ const initializeObserver = async () => {
 
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0;">
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                     </p>
                                 </div>
                                 <lol-uikit-flat-button-secondary 
@@ -447,35 +447,35 @@ const initializeObserver = async () => {
                 settingsContainer.innerHTML = `
                     <div class="lol-settings-general-row">
                         <div style="display: flex; flex-direction: column; gap: 15px; margin-top: 10px;">
-                            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(240, 230, 210, 0.1); border-radius: 4px; border-left: 3px solid #c8aa6e;">
-                                <lol-uikit-icon icon="warning" style="color: #c8aa6e; margin-top: 2px;"></lol-uikit-icon>
+                            <div style="display: flex; align-items: flex-start; gap: 10px; padding: 10px; background: rgba(240, 230, 210, 0.1); border-radius: 4px; border-left: 3px solid #35e4ff;">
+                                <lol-uikit-icon icon="warning" style="color: #35e4ff; margin-top: 2px;"></lol-uikit-icon>
                                 <div style="display: flex; flex-direction: column; gap: 3px;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-weight: bold; color: #f0e6d2;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-weight: bold; color: #dff3ff;">
                                         ${LanguageManager.t('restartRequired')}
                                     </p>
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('restartRequiredDesc')}
                                     </p>
                                 </div>
                             </div>
                         
-                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+                            <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.addonAAEnabled ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.addonAAEnabled ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('addonAADesc')}
                                     </p>
                                 </div>
                             </div>
 							
-							<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #3c3c41;">
+							<div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0; border-bottom: thin solid #2a3350;">
                                 <lol-uikit-flat-checkbox ${CONFIG.addonWinLose ? 'class="checked"' : ''} style="margin-right: 15px;">
                                     <input slot="input" type="checkbox" ${CONFIG.addonWinLose ? 'checked' : ''}>
                                 </lol-uikit-flat-checkbox>
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                         ${LanguageManager.t('addonWinLoseDesc')}
                                     </p>
                                 </div>
@@ -483,7 +483,7 @@ const initializeObserver = async () => {
 
                             <div style="display: flex; align-items: center; justify-content: space-between; padding: 10px 0;">
                                 <div style="display: flex; flex-direction: column; gap: 5px; flex: 1;">
-                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #a09b8c;">
+                                    <p class="lol-settings-window-size-text" style="margin: 0; font-size: 12px; color: #7a93a8;">
                                     </p>
                                 </div>
                                 <lol-uikit-flat-button-secondary 

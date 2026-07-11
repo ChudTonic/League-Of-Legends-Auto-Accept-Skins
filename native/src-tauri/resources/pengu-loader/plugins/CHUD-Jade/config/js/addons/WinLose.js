@@ -340,7 +340,7 @@ let data = [
                   </lol-uikit-dropdown-option>
                 </lol-uikit-framed-dropdown>
               </div>
-              <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: thin solid #3c3c41;">
+              <div style="display: flex; align-items: center; gap: 10px; padding-bottom: 10px; border-bottom: thin solid #2a3350;">
                 <p class="lol-settings-window-size-text">${LanguageManager.t('kdaDisplay')}</p>
                 <lol-uikit-framed-dropdown class="lol-settings-general-dropdown" style="width: 200px;" tabindex="0">
                   <lol-uikit-dropdown-option slot="lol-uikit-dropdown-option" class="framed-dropdown-type" selected="${
@@ -772,12 +772,12 @@ let data = [
         }
         .winloseStats .queue-type {
 			color: var(--plug-color2);
-			text-shadow: 0 0 3px rgba(200, 170, 110, 0.3);
+			text-shadow: 0 0 3px rgba(53, 228, 255, 0.3);
 			margin-bottom: 2px;
 			position: absolute;
         }
         .winloseStats .wins {
-          color: #0acbe6;
+          color: #35e4ff;
           text-shadow: 0 0 3px rgba(10, 203, 230, 0.3);
 		  animation: soft-text-glow-wins 3s ease-in-out infinite alternate;
         }
@@ -787,18 +787,18 @@ let data = [
 		  animation: soft-text-glow-lose 3s ease-in-out infinite alternate;
         }
         .winloseStats .winrate {
-          color: #f0e6d2;
+          color: #dff3ff;
           text-shadow: 0 0 3px rgba(240, 230, 210, 0.3);
 		  animation: soft-text-glow-winrate 3s ease-in-out infinite alternate;
         }
         .winloseStats .kda {
           color: var(--plug-color2);
-          text-shadow: 0 0 3px rgba(200, 170, 110, 0.3);
+          text-shadow: 0 0 3px rgba(53, 228, 255, 0.3);
 		  animation: soft-text-glow-kda 3s ease-in-out infinite alternate;
         }
         .winloseStats .loading {
           color: var(--plug-color2);
-          text-shadow: 0 0 3px rgba(200, 170, 110, 0.3);
+          text-shadow: 0 0 3px rgba(53, 228, 255, 0.3);
           animation: pulse 1.5s infinite;
         }
         @keyframes pulse {
@@ -807,7 +807,7 @@ let data = [
           100% { opacity: 1; }
         }
         #winlose-settings .lol-settings-general-title {
-          color: #f0e6d2;
+          color: #dff3ff;
           font-family: inherit;
           font-size: 14px;
           font-weight: 700;
