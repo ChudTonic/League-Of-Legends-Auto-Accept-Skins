@@ -75,6 +75,10 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
         return;
     };
     let bridge = app_state.skins_bridge.lock_safe().clone();
+    // Party mode: the connected peers' skins get staged into the overlay too,
+    // which is what makes party members see each other's skins in-game. Held
+    // here so each injection path can fold the peer mods in.
+    let party_mgr = app_state.skins_party.lock_safe().clone();
 
     // Resolve the League "Game" directory lazily and set it every trigger
     // (cheap, and the install dir can change between client launches) —
@@ -136,7 +140,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
         } else {
             log_info!("[INJECT] Custom mod selected for unowned skin {target_skin_id}, injecting base skin ZIP + custom mod");
         }
-        run_custom_mod_injection(&app, &skins, &injection, bridge.as_ref(), custom_mod.clone(), &category_mods, base_skin_name, champion_name.clone()).await;
+        run_custom_mod_injection(&app, &skins, &injection, bridge.as_ref(), custom_mod.clone(), &category_mods, base_skin_name, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -150,7 +154,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
             mod_path: String::new(),
             relative_path: String::new(),
         };
-        run_custom_mod_injection(&app, &skins, &injection, bridge.as_ref(), dummy, &category_mods, base_skin_name, champion_name.clone()).await;
+        run_custom_mod_injection(&app, &skins, &injection, bridge.as_ref(), dummy, &category_mods, base_skin_name, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -168,18 +172,41 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
     };
     let client = lcu::build_client(lcu_ext::LCU_API_TIMEOUT_S);
 
+    // Stage party-member skins now (cleans the mods dir first so they survive)
+    // and fold them into the overlay for both the owned and unowned paths.
+    let party_folders = stage_party_mods(&party_mgr).await;
+
     // Force owned skins/chromas via LCU (still runs injection afterward so
     // the overlay is built with any party/category mods).
     let base_owned = owned_skin_ids.contains(&effective_skin_id)
         || (ui_skin_id.is_some_and(|id| owned_skin_ids.contains(&id)) && Some(effective_skin_id) != ui_skin_id);
     if base_owned {
         force_owned_skin(&client, &auth, local_cell_id, effective_skin_id, champ_id, random_mode_active, &injection).await;
-        spawn_owned_injection(app.clone(), skins.clone(), injection.clone(), name.clone(), champion_name.clone(), champ_id);
+        spawn_owned_injection(app.clone(), skins.clone(), injection.clone(), name.clone(), champion_name.clone(), champ_id, party_folders);
         return;
     }
 
     // Inject if the user doesn't own the hovered skin.
-    inject_unowned_skin(app, skins, client, auth, injection, bridge, name, champion_name, champ_id, local_cell_id, random_mode_active).await;
+    inject_unowned_skin(app, skins, client, auth, injection, bridge, name, champion_name, champ_id, local_cell_id, random_mode_active, party_folders).await;
+}
+
+/// Clean the mods dir and (re)stage every connected party peer's skin into it,
+/// returning their folder names. Party mods must be staged AFTER the mods-dir
+/// clean or they'd be wiped, so the owned/unowned paths (which otherwise let
+/// the injector do the clean) call this and pass the folders as
+/// `extra_mod_names` — the injector then skips its own clean and keeps them.
+/// Returns empty (and does NOT clean) when party mode is off or has no peers.
+async fn stage_party_mods(party_mgr: &Option<Arc<crate::skins::party::manager::PartyManager>>) -> Vec<String> {
+    let Some(pm) = party_mgr else { return Vec::new() };
+    if pm.get_party_skins().await.is_empty() {
+        return Vec::new();
+    }
+    storage::clean_mods_dir(&paths::injection_mods_dir());
+    let staged = pm.prepare_party_mods().await;
+    if !staged.is_empty() {
+        log_info!("[INJECT] Staged {} party-member skin(s) for the overlay", staged.len());
+    }
+    staged
 }
 
 fn log_trigger_summary(ticker_id: u64, name: &str, custom_mod: Option<&CustomModSelection>, category_mods: &CategoryModSelections) {
@@ -383,6 +410,7 @@ async fn run_custom_mod_injection(
     category_mods: &CategoryModSelections,
     base_skin_name: Option<String>,
     champion_name: String,
+    party_mgr: &Option<Arc<crate::skins::party::manager::PartyManager>>,
 ) {
     let mods_dir = paths::injection_mods_dir();
     let cache_dir = paths::injection_extract_cache_dir();
@@ -427,6 +455,16 @@ async fn run_custom_mod_injection(
             log_info!("[INJECT] Including other mod: {}", m.mod_name);
             extra_names.push(folder);
             labels.push(format!("Other ({})", m.mod_name));
+        }
+    }
+    // Fold in party-member skins. The mods dir was already cleaned at the top
+    // of this function, so `prepare_party_mods` stages into it without wiping
+    // what we just extracted.
+    if let Some(pm) = party_mgr {
+        for folder in pm.prepare_party_mods().await {
+            log_info!("[INJECT] Including party-member skin: {folder}");
+            extra_names.push(folder);
+            labels.push("Party skin".to_string());
         }
     }
 
@@ -499,12 +537,15 @@ fn spawn_owned_injection(
     name: String,
     champion_name: String,
     champion_id: Option<i64>,
+    party_folders: Vec<String>,
 ) {
     // `app` is reserved for a later milestone (S9 event emission); not read yet.
     let _ = &app;
     spawn_game_end_watcher(skins, injection.clone());
     tauri::async_runtime::spawn_blocking(move || {
-        let ok = injection.inject_skin_immediately(&name, None, Some(&champion_name), champion_id, &[]);
+        // Your own owned skin shows natively; `party_folders` are the peer
+        // skins folded into the overlay so party members see each other's.
+        let ok = injection.inject_skin_immediately(&name, None, Some(&champion_name), champion_id, &party_folders);
         if ok {
             log_info!("[INJECT] Owned-skin overlay build completed");
         } else {
@@ -526,6 +567,7 @@ async fn inject_unowned_skin(
     champ_id: Option<i64>,
     local_cell_id: Option<i64>,
     random_mode_active: bool,
+    party_folders: Vec<String>,
 ) {
     if let Some(cid) = champ_id {
         let base_skin_id = cid * 1000;
@@ -540,7 +582,9 @@ async fn inject_unowned_skin(
 
     let app = app.clone();
     tauri::async_runtime::spawn_blocking(move || {
-        let success = injection.inject_skin_immediately(&name, None, Some(&champion_name), champ_id, &[]);
+        // `name` is the user's unowned skin (primary); `party_folders` are the
+        // connected peers' skins folded in so party members see each other's.
+        let success = injection.inject_skin_immediately(&name, None, Some(&champion_name), champ_id, &party_folders);
 
         if random_mode_active {
             let mut shared = skins.shared.lock_safe();
