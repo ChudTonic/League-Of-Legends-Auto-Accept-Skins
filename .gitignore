@@ -45,3 +45,7 @@ __pycache__/
 *.swp
 .DS_Store
 Thumbs.db
+
+# Pengu Loader rebrand backups + runtime logs (never bundle/commit)
+native/src-tauri/resources/pengu-loader/*.rosebak
+native/src-tauri/resources/pengu-loader/*.log
