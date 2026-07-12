@@ -93,7 +93,7 @@
   const DL_ICON = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>`;
   function installBtnState(m) {
     const pct = st.installing[m.id];
-    if (pct != null) return `<span class="lb-qa lb-qpct">${Math.round(pct)}%</span>`;
+    if (pct != null) return `<span class="lb-qa lb-qpct" data-pctid="${esc(m.id)}">${Math.round(pct)}%</span>`;
     if (st.installed[m.id]) return `<span class="lb-qa lb-qcheck" title="Installed"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round"><path d="M20 6 9 17l-5-5"/></svg></span>`;
     if (!m.ready) return `<span class="lb-qa lb-qdl lb-disabled" title="Preparing this mod — check back soon">${DL_ICON}</span>`;
     return `<button class="lb-qa lb-qdl" data-install="${esc(m.id)}" title="Install">${DL_ICON}</button>`;
@@ -285,13 +285,27 @@
     on("[data-remove]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.remove; try { const r = await inv("library_remove", { modId: id }); st.installed = (r && r.installed) || st.installed; } catch (er) {} const m = (st.catalog || []).find((x) => x.id === id); toast("Mod removed", `${(m && m.name) || "Mod"} deleted from your mods folder.`, "danger"); paint(); });
   }
 
+  // Update just the progress-bar/percent elements in place so a download tick
+  // doesn't re-paint (and reload the splash image) — that caused visible modal
+  // flicker. paint() is only called on state transitions (start/finish).
+  function setInstallProgressUI(id, pct) {
+    const p = Math.round(pct);
+    const bar = document.querySelector(".lb-mprog-bar");
+    if (bar) bar.style.width = p + "%";
+    const cap = document.querySelector(".lb-mprog-cap");
+    if (cap) cap.textContent = `Downloading… ${p}%`;
+    const chip = root && root.querySelector(`.lb-qpct[data-pctid="${id}"]`);
+    if (chip) chip.textContent = p + "%";
+  }
+
   async function install(id) {
     if (st.installing[id] != null || st.installed[id]) return;
     const m = (st.catalog || []).find((x) => x.id === id) || { name: id, champ: "" };
     if (!m.ready) { toast("Not ready yet", "This mod is still being prepared — try again shortly.", "warning"); return; }
-    // Indeterminate visual progress while the real download runs.
+    // Indeterminate visual progress while the real download runs. Render the
+    // progress UI once (paint), then tick the bar in place (no re-paint).
     st.installing[id] = 5; paint();
-    const iv = setInterval(() => { const c = st.installing[id]; if (c == null) return clearInterval(iv); st.installing[id] = Math.min(94, c + 3 + Math.random() * 6); paint(); }, 180);
+    const iv = setInterval(() => { const c = st.installing[id]; if (c == null) return clearInterval(iv); st.installing[id] = Math.min(94, c + 3 + Math.random() * 6); setInstallProgressUI(id, st.installing[id]); }, 180);
     try {
       const rec = await inv("library_install", { modId: id, name: m.name || id, champ: m.champ || "", champId: m.champId || null, category: m.rawCategory || "" });
       clearInterval(iv); delete st.installing[id];
