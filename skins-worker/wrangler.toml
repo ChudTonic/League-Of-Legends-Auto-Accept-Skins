@@ -12,12 +12,17 @@ crons = ["*/15 * * * *"]
 binding = "CATALOG"
 id = "3e828b8e9e924b4ca4be4422aba45862"
 
-# Optional: self-hosted image mirror. Bind an R2 bucket named the same and the
-# worker persists mirrored thumbnails there; without it, images still self-host
-# via the Cloudflare edge cache (mirrored-on-first-view either way).
-# [[r2_buckets]]
-# binding = "IMAGES"
-# bucket_name = "chud-skins-images"
+# Self-hosted image mirror (persists thumbnails so upstream-source's image CDN is hit
+# once per image, ever).
+[[r2_buckets]]
+binding = "IMAGES"
+bucket_name = "chud-skins-images"
+
+# File mirror (resilience): downloads mirror into our R2 and serve from us, so
+# mirrored skins survive upstream-source blocking us and never spike their bandwidth.
+[[r2_buckets]]
+binding = "FILES"
+bucket_name = "chud-skins-files"
 
 # Secret for the manual /crawl endpoint — set with:
 #   npx wrangler secret put CRAWL_KEY

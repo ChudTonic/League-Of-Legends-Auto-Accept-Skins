@@ -200,6 +200,21 @@ export default {
       }
     }
 
+    if (path.startsWith("/mirror/")) {
+      if (!env.CRAWL_KEY || url.searchParams.get("key") !== env.CRAWL_KEY) return json({ error: "forbidden" }, 403);
+      const modId = decodeURIComponent(path.slice("/mirror/".length));
+      const asset = await resolveDownload(env, modId);
+      if (!asset) return json({ step: "resolve", error: "no asset" });
+      let fr;
+      try { fr = await fetch(asset, { headers: { "User-Agent": UA } }); } catch (e) { return json({ step: "fetch", error: String(e), asset }); }
+      if (!fr.ok) return json({ step: "fetch", status: fr.status, asset });
+      const buf = await fr.arrayBuffer();
+      if (!env.FILES) return json({ step: "r2", error: "no FILES binding", bytes: buf.byteLength });
+      try { await env.FILES.put(`f/${modId}.fantome`, buf, { httpMetadata: { contentType: "application/zip" } }); } catch (e) { return json({ step: "put", error: String(e), bytes: buf.byteLength }); }
+      const head = await env.FILES.head(`f/${modId}.fantome`);
+      return json({ ok: true, bytes: buf.byteLength, r2size: head ? head.size : null });
+    }
+
     if (path === "/crawl") {
       if (!env.CRAWL_KEY || url.searchParams.get("key") !== env.CRAWL_KEY) return json({ error: "forbidden" }, 403);
       if (url.searchParams.get("full") === "1") return json({ full: await crawlFull(env) });
@@ -251,7 +266,10 @@ export default {
         ctx.waitUntil((async () => {
           try {
             const fr = await fetch(asset, { headers: { "User-Agent": UA } });
-            if (fr.ok) await env.FILES.put(fkey, fr.body, { httpMetadata: { contentType: "application/zip" } });
+            if (fr.ok) {
+              const buf = await fr.arrayBuffer(); // buffer, not stream — the streamed body was being dropped post-response
+              await env.FILES.put(fkey, buf, { httpMetadata: { contentType: "application/zip" } });
+            }
           } catch (e) {}
         })());
         // first hit → upstream-source; next hits → our R2 (mirror completes async)
