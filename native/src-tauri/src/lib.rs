@@ -883,6 +883,43 @@ fn get_appear_offline(state: tauri::State<Arc<AppState>>) -> bool {
     state.config.lock_safe().presence.appear_offline
 }
 
+/// Skin Library (BETA) gate state — `{enabled, endpoint}`.
+#[tauri::command]
+fn library_get(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let c = state.config.lock_safe();
+    json!({ "enabled": c.library.enabled, "endpoint": c.library.endpoint })
+}
+
+/// Flip the Skin Library beta toggle (hides/shows the Library page).
+#[tauri::command]
+fn set_library_enabled(enabled: bool, state: tauri::State<Arc<AppState>>) -> bool {
+    let mut c = state.config.lock_safe();
+    c.library.enabled = enabled;
+    let _ = c.save();
+    enabled
+}
+
+/// Fetch a page of the skin catalog from Chud's `chud-skins` Worker (which
+/// caches the upstream skin catalog). Backend-side fetch so there's no CORS/UA concern.
+#[tauri::command]
+async fn library_catalog(
+    search: Option<String>,
+    champion: Option<String>,
+    category: Option<String>,
+    page: Option<u32>,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = { state.config.lock_safe().library.endpoint.clone() };
+    let base = endpoint.trim_end_matches('/');
+    let mut params: Vec<(&str, String)> = vec![("page", page.unwrap_or(0).to_string())];
+    if let Some(s) = search.filter(|s| !s.trim().is_empty()) { params.push(("search", s)); }
+    if let Some(c) = champion.filter(|s| !s.trim().is_empty()) { params.push(("champion", c)); }
+    if let Some(c) = category.filter(|s| !s.trim().is_empty()) { params.push(("category", c)); }
+    let http = lcu::build_client(10.0);
+    let resp = http.get(format!("{base}/catalog")).query(&params).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
 /// Import the current-patch best runes + summoner spells + item build for your
 /// locked champion into the live client, via the runes Worker + the local LCU.
 /// Manual trigger for an "Import build" button; the (future) auto-import on
@@ -1106,6 +1143,9 @@ pub fn run() {
             runes_import_now,
             set_appear_offline,
             get_appear_offline,
+            library_get,
+            set_library_enabled,
+            library_catalog,
             updater_check,
             updater_install
         ])

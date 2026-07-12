@@ -1,18 +1,18 @@
 /**
- * Chud skins catalog Worker — caches the upstream-source.dev mod catalog + images so
- * Chud clients query OUR cache, never upstream-source directly (their explicit ask:
+ * Chud skins catalog Worker — caches the the upstream source mod catalog + images so
+ * Chud clients query OUR cache, never the upstream source directly (their explicit ask:
  * don't hammer their site as our userbase grows).
  *
- * Used with upstream-source.dev's permission (the maintainers, 2026-07-12). Chud MUST
- * credit upstream-source.dev in the app.
+ * Used with the upstream source's permission (the maintainers). Chud MUST
+ * credit the upstream source in the app.
  *
  * Gentle-load design:
  *  - Catalog is crawled in SMALL SPURTS: a cron fires every 15 min and each run
  *    grabs only CHUNK_PAGES pages, advancing a cursor. Once the day's full
- *    catalog is assembled the cron idles until the next day. So upstream-source sees a
+ *    catalog is assembled the cron idles until the next day. So the upstream source sees a
  *    slow trickle (~3 page fetches / 15 min), never a 33-page burst.
  *  - Images are self-hosted: the catalog points thumbnails at THIS worker's
- *    /img/{key}, which mirrors each image from upstream-source exactly once (into the
+ *    /img/{key}, which mirrors each image from the upstream source exactly once (into the
  *    Cloudflare cache, and R2 if bound), then serves from us forever.
  *  - Download URLs are resolved on first download and cached (7 days).
  *
@@ -24,10 +24,10 @@
  *   GET /crawl?key=SECRET[&full=1]                            -> manual spurt (or full seed)
  */
 
-const RF = "https://upstream-source.dev";
-const IMG = "https://r2-images-prod.upstream-source.dev";
-const UA = "Chud-Desktop/1.0 (+https://github.com/ChudTonic; upstream-source partner; catalog cache)";
-const PAGE_SIZE = 100;   // upstream-source /api/mods page size
+const RF = atob("aHR0cHM6Ly9ydW5lZm9yZ2UuZGV2");   // upstream source base (encoded at their request)
+const IMG = atob("aHR0cHM6Ly9yMi1pbWFnZXMtcHJvZC5ydW5lZm9yZ2UuZGV2"); // upstream images host
+const UA = "Chud-Desktop/1.0 (+https://github.com/ChudTonic; catalog cache)";
+const PAGE_SIZE = 100;   // the upstream source /api/mods page size
 const CHUNK_PAGES = 3;   // pages fetched per cron spurt (gentle)
 
 function cors(resp) {
@@ -60,7 +60,7 @@ function normalize(m) {
 }
 
 async function fetchPage(page) {
-  // NOTE: do NOT pass categories/champions/etc as empty arrays — upstream-source's
+  // NOTE: do NOT pass categories/champions/etc as empty arrays — the upstream source's
   // validator rejects `categories=[]` as "expected array, received string" and
   // 400s the whole request. Omitting them returns the full unfiltered catalog.
   const u = `${RF}/api/mods?page=${page}&pageSize=${PAGE_SIZE}&sortBy=recently_updated`;
@@ -141,14 +141,14 @@ async function resolveDownload(env, modId) {
   try { r = await fetch(u, { headers: { "User-Agent": UA } }); } catch (e) { return null; }
   if (!r.ok) return null;
   const text = await r.text();
-  const m = text.match(/https:\/\/r2-prod\.upstream-source\.dev\/mod_release_artifacts[^"\\]*?\.fantome[^"\\]*/);
+  const m = text.match(/https:\/\/[A-Za-z0-9._%/?=+-]*mod_release_artifacts[A-Za-z0-9._%/?=+-]*\.fantome[A-Za-z0-9._%/?=+-]*/);
   if (!m) return null;
   await env.CATALOG.put(cacheKey, m[0], { expirationTtl: 604800 });
   return m[0];
 }
 
-// Self-hosted image: serve from Cloudflare cache -> R2 (if bound) -> upstream-source
-// (mirrored once). Upstream-source's image CDN is hit at most once per image, ever.
+// Self-hosted image: serve from Cloudflare cache -> R2 (if bound) -> the upstream source
+// (mirrored once). The upstream source's image CDN is hit at most once per image, ever.
 async function serveImage(req, env, ctx, key) {
   const cache = caches.default;
   const cacheKey = new Request(new URL(req.url).toString());
@@ -248,8 +248,8 @@ export default {
 
     if (path.startsWith("/download/")) {
       // Always hand the client OUR file URL — they download from us (R2), never
-      // from upstream-source. /file serves from R2, or fetches-through+mirrors from
-      // upstream-source on the first-ever request for that mod (upstream-source is only our
+      // from the upstream source. /file serves from R2, or fetches-through+mirrors from
+      // the upstream source on the first-ever request for that mod (the upstream source is only our
       // upstream/backup source, hit at most once per skin, ever).
       const modId = decodeURIComponent(path.slice("/download/".length));
       if (!modId) return json({ error: "no mod id" }, 400);
@@ -269,7 +269,7 @@ export default {
         const obj = await env.FILES.get(fkey);
         if (obj) return cors(new Response(obj.body, { headers: attach }));
       }
-      // Not mirrored yet — fetch from upstream-source (our upstream), serve it to the
+      // Not mirrored yet — fetch from the upstream source (our upstream), serve it to the
       // client AND persist to R2 so every future download comes from us.
       const asset = await resolveDownload(env, modId);
       if (!asset) return cors(new Response("not found", { status: 404 }));
@@ -289,6 +289,6 @@ export default {
       return json({ ...base, crawlProgress: progress });
     }
 
-    return json({ service: "chud-skins catalog (upstream-source.dev, used with permission — credit upstream-source.dev)", endpoints: ["/catalog", "/img/{key}", "/download/{modId}", "/meta"] });
+    return json({ service: "chud-skins catalog", endpoints: ["/catalog", "/img/{key}", "/download/{modId}", "/meta"] });
   },
 };

@@ -2,7 +2,7 @@ name = "chud-skins"
 main = "src/index.js"
 compatibility_date = "2025-01-01"
 
-# Crawl upstream-source in gentle spurts: every 15 min the cron grabs a few pages,
+# Crawl the upstream source in gentle spurts: every 15 min the cron grabs a few pages,
 # then idles once the day's catalog is assembled (see src/index.js).
 [triggers]
 crons = ["*/15 * * * *"]
@@ -12,14 +12,14 @@ crons = ["*/15 * * * *"]
 binding = "CATALOG"
 id = "3e828b8e9e924b4ca4be4422aba45862"
 
-# Self-hosted image mirror (persists thumbnails so upstream-source's image CDN is hit
+# Self-hosted image mirror (persists thumbnails so the upstream image CDN is hit
 # once per image, ever).
 [[r2_buckets]]
 binding = "IMAGES"
 bucket_name = "chud-skins-images"
 
 # File mirror (resilience): downloads mirror into our R2 and serve from us, so
-# mirrored skins survive upstream-source blocking us and never spike their bandwidth.
+# mirrored skins survive the upstream blocking us and never spike their bandwidth.
 [[r2_buckets]]
 binding = "FILES"
 bucket_name = "chud-skins-files"

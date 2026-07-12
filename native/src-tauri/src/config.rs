@@ -221,6 +221,23 @@ impl Default for Presence {
     }
 }
 
+/// Skin Library (BETA) — the in-app browser for the upstream skin catalog,
+/// served through Chud's `chud-skins` Cloudflare Worker. Hidden behind a beta
+/// toggle (`enabled`, default off) until the feature is finished, so it only
+/// shows for people who opt in from Settings.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Library {
+    pub enabled: bool,
+    pub endpoint: String,
+}
+
+impl Default for Library {
+    fn default() -> Self {
+        Self { enabled: false, endpoint: "https://chud-skins.jivy26.workers.dev".into() }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -233,6 +250,7 @@ pub struct Config {
     pub runes: Runes,
     pub client: ClientCustomization,
     pub presence: Presence,
+    pub library: Library,
 }
 
 /// Per-user config file path: `%APPDATA%/LeagueOfLegendsTools/config.json`.
