@@ -184,7 +184,7 @@
         <div><div class="lb-name" data-open="${esc(id)}">${esc(rec.name || id)}</div><div class="lb-meta">by <b>${esc(m.author || "unknown")}</b>${rec.champ ? " · " + esc(rec.champ) : ""} · ${(rec.size_mb || 0).toFixed(1)} MB</div></div>
         <div class="lb-ver">v${esc(rec.version || "1.0.0")}</div>
         <div><span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span></div>
-        <div class="lb-iactions"><button class="btn sm" data-apply="${esc(id)}">Apply in Skins</button><button class="lb-trash" data-remove="${esc(id)}" title="Remove"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>
+        <div class="lb-iactions"><span class="lb-inchamp" title="Open the Custom Mods button in champ select when this champion is up">In champ select ✓</span><button class="lb-trash" data-remove="${esc(id)}" title="Remove"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>
       </div>`;
     }).join("");
     return `<div class="lb-main">
@@ -222,7 +222,7 @@
     const isFav = st.favs.includes(m.id);
     let action;
     if (installing) action = `<div class="lb-mprog"><div class="lb-mprog-bar" style="width:${Math.round(pct)}%"></div></div><div class="lb-mprog-cap">Downloading… ${Math.round(pct)}%</div>`;
-    else if (inst) action = `<div class="lb-minstalled"><span class="chip lb-chip-ok"><span class="lb-dot on"></span>INSTALLED v${esc(inst.version || "1.0.0")}</span><button class="btn sm" data-apply="${esc(m.id)}">Apply in Skins</button><button class="lb-trash" data-remove="${esc(m.id)}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>`;
+    else if (inst) action = `<div class="lb-minstalled"><span class="chip lb-chip-ok"><span class="lb-dot on"></span>INSTALLED v${esc(inst.version || "1.0.0")}</span><span class="lb-inchamp">Ready in champ select ✓</span><button class="lb-trash" data-remove="${esc(m.id)}"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>`;
     else if (!m.ready) action = `<button class="btn primary lb-minstall" disabled style="opacity:.5;cursor:default">Preparing this mod — check back soon</button>`;
     else action = `<button class="btn primary lb-minstall" data-install="${esc(m.id)}">↓ Install to Chud · v${esc(m.version)}</button>`;
     return `<div class="lb-backdrop" data-close="1"><div class="lb-modal" role="dialog">
@@ -238,7 +238,7 @@
           <div class="lb-mchips"><span class="chip ${m.working ? "lb-chip-ok" : "lb-chip-warn"}"><span class="lb-dot on"></span>${m.working ? "WORKING" : "BROKEN ON PATCH"}</span><span class="chip lb-chip-n">${esc(m.category)}</span></div>
           <div class="lb-mstats"><span>${fmtN(m.views)} views</span><span>↓ ${fmtN(m.installs)}</span><span>♥ ${fmtN(m.likes)}</span></div>
           <div class="lb-mdesc">${esc(m.description || "No description provided.")}</div>
-          <div class="lb-maction">${action}<div class="lb-mfoot">Downloads to your mods folder — enable & apply it from the Skins page.</div></div>
+          <div class="lb-maction">${action}<div class="lb-mfoot">Installs straight to Chud. In champ select, click the <b>Custom Mods</b> button and pick it when this champion is up.</div></div>
         </div>
       </div>
     </div></div>`;
@@ -283,7 +283,6 @@
     on("[data-fav]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.fav; const on2 = !st.favs.includes(id); try { const favs = await inv("library_set_favorite", { modId: id, on: on2 }); st.favs = favs || st.favs; } catch (er) {} paint(); });
     on("[data-install]", "onclick", (e) => { e.stopPropagation(); install(e.currentTarget.dataset.install); });
     on("[data-remove]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.remove; try { const r = await inv("library_remove", { modId: id }); st.installed = (r && r.installed) || st.installed; } catch (er) {} const m = (st.catalog || []).find((x) => x.id === id); toast("Mod removed", `${(m && m.name) || "Mod"} deleted from your mods folder.`, "danger"); paint(); });
-    on("[data-apply]", "onclick", (e) => { e.stopPropagation(); st.selId = null; if (window.ChudNavTo) window.ChudNavTo("skins"); });
   }
 
   async function install(id) {
@@ -294,10 +293,10 @@
     st.installing[id] = 5; paint();
     const iv = setInterval(() => { const c = st.installing[id]; if (c == null) return clearInterval(iv); st.installing[id] = Math.min(94, c + 3 + Math.random() * 6); paint(); }, 180);
     try {
-      const rec = await inv("library_install", { modId: id, name: m.name || id, champ: m.champ || "" });
+      const rec = await inv("library_install", { modId: id, name: m.name || id, champ: m.champ || "", champId: m.champId || null });
       clearInterval(iv); delete st.installing[id];
       st.installed[id] = rec || { name: m.name, version: "1.0.0" };
-      toast("Mod installed", `${m.name || "Mod"} — enable & apply it from the Skins page.`, "success");
+      toast("Mod installed", `${m.name || "Mod"} — pick it from the Custom Mods button in champ select.`, "success");
     } catch (e) {
       clearInterval(iv); delete st.installing[id];
       toast("Install failed", String(e).slice(0, 120), "danger");

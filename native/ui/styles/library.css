@@ -122,3 +122,4 @@
 .lb-mfoot { font-family: var(--font-mono); font-size: 9.5px; color: #6b6b96; margin-top: 8px; }
 .lb-qa.lb-disabled { opacity: .3; cursor: default; }
 .lb-qa.lb-disabled:hover { border-color: rgba(255,255,255,0.14); }
+.lb-inchamp { font-family: var(--font-mono); font-size: 10.5px; color: #33e0a0; letter-spacing: .02em; white-space: nowrap; }
