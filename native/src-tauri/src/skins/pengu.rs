@@ -52,6 +52,14 @@ fn pengu_dir() -> &'static Path {
     PENGU_DIR.get_or_init(resolve_pengu_dir)
 }
 
+/// Force the bundled→runtime Pengu sync on app startup, so newly-shipped
+/// plugins (added in an update) always reach the runtime plugins folder even
+/// when the user never re-activates Pengu. Idempotent (OnceLock) and preserves
+/// datastore + plugin enable/disable state. Called from `skins::init`.
+pub fn ensure_synced() {
+    let _ = pengu_dir();
+}
+
 fn pengu_exe(dir: &Path) -> PathBuf {
     dir.join("Pengu Loader.exe")
 }

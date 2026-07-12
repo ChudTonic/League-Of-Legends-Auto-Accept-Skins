@@ -181,6 +181,9 @@ pub struct ClientCustomization {
     pub hide_event_timers: bool,
     /// Hide the animated video background on the play/home screen.
     pub hide_home_video: bool,
+    /// Notification DND — hide attention-nag pips/badges (activity-center dot,
+    /// call-to-action pips, Clash pip, loyalty/rewards badge, nav "new" badges).
+    pub hide_notif_badges: bool,
 }
 
 impl Default for ClientCustomization {
@@ -196,6 +199,7 @@ impl Default for ClientCustomization {
             hide_challenges: false,
             hide_event_timers: false,
             hide_home_video: false,
+            hide_notif_badges: false,
         }
     }
 }
