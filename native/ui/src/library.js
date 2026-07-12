@@ -41,10 +41,45 @@
     };
   }
 
+  // ── browser-preview mocks (same pattern as MOCK_STATE / MOCK_PROFILE) ──
+  // Raw worker shape (pre-adapt). Thumbs borrow official tiles from
+  // CommunityDragon purely as stand-in art for the no-backend preview.
+  const TILE = (c, n) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-tiles/${c}/${c * 1000 + n}.jpg`;
+  const MOCK_MODS = [
+    { id: "mock-starfall-ahri", name: "Starfall Ahri", author: "Mochi", champions: [{ id: 103, name: "Ahri" }], category: "champion_skin", themes: ["anime"], views: 48200, installs: 12400, likes: 3100, updatedAt: "2026-07-10T12:00:00Z", trending: true, working: true, ready: true, thumb: TILE(103, 1), description: "Celestial recolor with new trail VFX." },
+    { id: "mock-cyber-yasuo", name: "Cyber Yasuo 2077", author: "NightOwl", champions: [{ id: 157, name: "Yasuo" }], category: "champion_skin", themes: ["scifi"], views: 39100, installs: 9800, likes: 2400, updatedAt: "2026-07-08T12:00:00Z", trending: true, working: true, ready: true, thumb: TILE(157, 2), description: "Neon-city blade with holo wind wall." },
+    { id: "mock-bubblegum-jinx", name: "Bubblegum Jinx", author: "candyfloss", champions: [{ id: 222, name: "Jinx" }], category: "champion_skin", themes: ["meme"], views: 30500, installs: 8100, likes: 2050, updatedAt: "2026-07-11T12:00:00Z", trending: true, working: true, ready: true, thumb: TILE(222, 1), description: "Pastel rockets. Pow-Pow squeaks." },
+    { id: "mock-sailor-lux", name: "Sailor Lux", author: "MoonPrism", champions: [{ id: 99, name: "Lux" }], category: "champion_skin", themes: ["anime"], views: 27800, installs: 7300, likes: 1900, updatedAt: "2026-07-05T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(99, 2), description: "Magical-girl ult beam and wand." },
+    { id: "mock-void-zed", name: "Void Reaver Zed", author: "Umbra", champions: [{ id: 238, name: "Zed" }], category: "champion_skin", themes: ["fantasy"], views: 22100, installs: 6100, likes: 1400, updatedAt: "2026-06-28T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(238, 1), description: "Void-touched shadows and shurikens." },
+    { id: "mock-oni-akali", name: "Oni Akali", author: "KaijuWorks", champions: [{ id: 84, name: "Akali" }], category: "champion_skin", themes: ["fantasy"], views: 19600, installs: 5400, likes: 1250, updatedAt: "2026-07-02T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(84, 1), description: "Demon mask, ember smoke bomb." },
+    { id: "mock-kpop-seraphine", name: "Encore Seraphine", author: "stagelight", champions: [{ id: 147, name: "Seraphine" }], category: "champion_skin", themes: ["anime", "events"], views: 17400, installs: 4800, likes: 1150, updatedAt: "2026-07-09T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(147, 1), description: "Concert-stage platform and mic VFX." },
+    { id: "mock-dragonfire-vayne", name: "Dragonfire Vayne", author: "emberfall", champions: [{ id: 67, name: "Vayne" }], category: "champion_skin", themes: ["fantasy"], views: 15900, installs: 4300, likes: 980, updatedAt: "2026-06-24T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(67, 1), description: "Flaming bolts, ember tumble." },
+    { id: "mock-crimson-thresh", name: "Crimson Moon Thresh", author: "lantern", champions: [{ id: 412, name: "Thresh" }], category: "champion_skin", themes: ["fantasy", "events"], views: 14200, installs: 3900, likes: 900, updatedAt: "2026-06-30T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(412, 1), description: "Blood-moon lantern and hooks." },
+    { id: "mock-retro-ezreal", name: "Retro Arcade Ezreal", author: "pixelpush", champions: [{ id: 81, name: "Ezreal" }], category: "champion_skin", themes: ["meme", "events"], views: 12800, installs: 3400, likes: 820, updatedAt: "2026-07-07T12:00:00Z", trending: false, working: true, ready: true, thumb: TILE(81, 1), description: "8-bit ult with coin pickups." },
+    { id: "mock-shiba-teemo", name: "Shiba Teemo", author: "doge", champions: [{ id: 17, name: "Teemo" }], category: "champion_skin", themes: ["meme"], views: 11300, installs: 3100, likes: 760, updatedAt: "2026-07-03T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Much shroom. Very blind." },
+    { id: "mock-gothic-morgana", name: "Gothic Morgana", author: "Nyx", champions: [{ id: 25, name: "Morgana" }], category: "champion_skin", themes: ["fantasy"], views: 9800, installs: 2600, likes: 610, updatedAt: "2026-06-21T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Lace, ravens, and a darker pool." },
+    { id: "mock-mecha-sett", name: "Mecha Sett Prime", author: "ironclad", champions: [{ id: 875, name: "Sett" }], category: "champion_skin", themes: ["scifi"], views: 8900, installs: 0, likes: 540, updatedAt: "2026-07-12T12:00:00Z", trending: false, working: true, ready: false, thumb: TILE(875, 1), description: "Piston punches. Still mirroring." },
+    { id: "mock-chroma-kat", name: "Chroma Crash Katarina", author: "bladeworks", champions: [{ id: 55, name: "Katarina" }], category: "champion_skin", themes: ["scifi"], views: 8100, installs: 2200, likes: 430, updatedAt: "2026-05-30T12:00:00Z", trending: false, working: false, ready: true, thumb: TILE(55, 1), description: "RGB daggers — broke on latest patch." },
+    { id: "mock-winter-rift", name: "Winter Wonder Rift", author: "Frostbyte", champions: [], category: "map_skin", themes: ["events"], views: 26400, installs: 7900, likes: 2100, updatedAt: "2026-07-01T12:00:00Z", trending: true, working: true, ready: true, thumb: null, description: "Snow-covered Summoner's Rift, aurora skybox." },
+    { id: "mock-abyss-aram", name: "Abyss Remastered (ARAM)", author: "Frostbyte", champions: [], category: "map_skin", themes: ["fantasy"], views: 13700, installs: 3600, likes: 880, updatedAt: "2026-06-18T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Deep-freeze Howling Abyss retexture." },
+    { id: "mock-clean-hud", name: "Minimal HUD — Clean UI", author: "pixelpush", champions: [], category: "ui", themes: [], views: 21900, installs: 6800, likes: 1700, updatedAt: "2026-07-06T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Slim frames, bigger minimap, no clutter." },
+    { id: "mock-anime-announcer", name: "Anime Announcer (JP)", author: "sakura_vx", champions: [], category: "announcer", themes: ["anime"], views: 18200, installs: 5100, likes: 1300, updatedAt: "2026-06-26T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Full JP voice pack for kills and objectives." },
+    { id: "mock-glados-announcer", name: "GLaDOS Announcer", author: "aperture_fan", champions: [], category: "announcer", themes: ["meme", "scifi"], views: 16600, installs: 4600, likes: 1200, updatedAt: "2026-06-15T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Passive-aggressive science commentary." },
+    { id: "mock-pixel-font", name: "Pixel Font Pack", author: "8bitforge", champions: [], category: "font", themes: ["meme"], views: 7400, installs: 2000, likes: 410, updatedAt: "2026-06-10T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Damage numbers in chunky 8-bit." },
+    { id: "mock-neon-vfx", name: "Neon Ability Recolors", author: "glowstick", champions: [], category: "vfx", themes: ["scifi"], views: 10800, installs: 2900, likes: 690, updatedAt: "2026-07-04T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Synthwave palette for common spell VFX." },
+    { id: "mock-ghibli-loading", name: "Painted Loading Screens", author: "totoro_", champions: [], category: "loading_screen", themes: ["anime"], views: 9200, installs: 2500, likes: 640, updatedAt: "2026-06-12T12:00:00Z", trending: false, working: true, ready: true, thumb: null, description: "Hand-painted loading art set." },
+  ];
+  const MOCK_BUNDLES = [
+    { champ: "Ahri", champId: 103, skins: [{ id: "mock-starfall-ahri", name: "Starfall Ahri", thumb: TILE(103, 1), ready: true }, { id: "mock-b-ahri-2", name: "Midnight Spirit", thumb: TILE(103, 2), ready: true }, { id: "mock-b-ahri-3", name: "Nine Lives", thumb: TILE(103, 3), ready: true }, { id: "mock-b-ahri-4", name: "Foxfire Redux", thumb: TILE(103, 4), ready: true }] },
+    { champ: "Yasuo", champId: 157, skins: [{ id: "mock-cyber-yasuo", name: "Cyber Yasuo 2077", thumb: TILE(157, 2), ready: true }, { id: "mock-b-yasuo-2", name: "Ronin Wanderer", thumb: TILE(157, 1), ready: true }, { id: "mock-b-yasuo-3", name: "Stormblade", thumb: TILE(157, 3), ready: true }, { id: "mock-b-yasuo-4", name: "Last Breath", thumb: TILE(157, 4), ready: true }] },
+    { champ: "Jinx", champId: 222, skins: [{ id: "mock-bubblegum-jinx", name: "Bubblegum Jinx", thumb: TILE(222, 1), ready: true }, { id: "mock-b-jinx-2", name: "Powder Keg", thumb: TILE(222, 2), ready: true }, { id: "mock-b-jinx-3", name: "Get Jinxed", thumb: TILE(222, 3), ready: true }, { id: "mock-b-jinx-4", name: "Zap Happy", thumb: TILE(222, 4), ready: true }] },
+    { champ: "Lux", champId: 99, skins: [{ id: "mock-sailor-lux", name: "Sailor Lux", thumb: TILE(99, 2), ready: true }, { id: "mock-b-lux-2", name: "Prism Guard", thumb: TILE(99, 1), ready: true }, { id: "mock-b-lux-3", name: "Final Spark", thumb: TILE(99, 3), ready: true }, { id: "mock-b-lux-4", name: "Lady of Light", thumb: TILE(99, 4), ready: true }] },
+  ];
+
   async function load() {
     try {
       const [cat, state] = await Promise.all([inv("library_catalog_all"), inv("library_state")]);
-      st.catalog = ((cat && cat.mods) || []).map(adapt);
+      st.catalog = ((cat && cat.mods) || (S.hasBackend ? [] : MOCK_MODS)).map(adapt);
       if (state) { st.installed = state.installed || {}; st.favs = state.favs || []; st.autoUpdate = state.autoUpdate !== false; }
     } catch (e) { console.error("library load failed", e); st.catalog = []; }
     const cs = new Set(), ts = new Set();
@@ -236,7 +271,7 @@
 
   async function fetchBundles() {
     if (st._bundlesLoading) return; st._bundlesLoading = true;
-    try { const r = await inv("library_bundles"); st.bundles = (r && r.bundles) || []; }
+    try { const r = await inv("library_bundles"); st.bundles = (r && r.bundles) || (S.hasBackend ? [] : MOCK_BUNDLES); }
     catch (e) { console.error("bundles load failed", e); st.bundles = []; }
     st._bundlesLoading = false; paint();
   }
@@ -346,10 +381,10 @@
       const prev = e.currentTarget.closest(".lb-mpreview");
       if (prev && vid) prev.innerHTML = `<iframe class="lb-vframe" src="https://www.youtube-nocookie.com/embed/${encodeURIComponent(vid)}?autoplay=1&rel=0&modestbranding=1" title="Skin showcase" allow="autoplay; encrypted-media; fullscreen" allowfullscreen></iframe>`;
     });
-    on("[data-fav]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.fav; const on2 = !st.favs.includes(id); try { const favs = await inv("library_set_favorite", { modId: id, on: on2 }); st.favs = favs || st.favs; } catch (er) {} paint(); });
+    on("[data-fav]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.fav; const on2 = !st.favs.includes(id); try { const favs = await inv("library_set_favorite", { modId: id, on: on2 }); st.favs = favs || (S.hasBackend ? st.favs : (on2 ? [...st.favs, id] : st.favs.filter((x) => x !== id))); } catch (er) {} paint(); });
     on("[data-install]", "onclick", (e) => { e.stopPropagation(); install(e.currentTarget.dataset.install); });
     on("[data-bundle]", "onclick", (e) => { e.stopPropagation(); installBundle(e.currentTarget.dataset.bundle); });
-    on("[data-remove]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.remove; try { const r = await inv("library_remove", { modId: id }); st.installed = (r && r.installed) || st.installed; } catch (er) {} const m = (st.catalog || []).find((x) => x.id === id); toast("Mod removed", `${(m && m.name) || "Mod"} deleted from your mods folder.`, "danger"); paint(); });
+    on("[data-remove]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.remove; try { const r = await inv("library_remove", { modId: id }); if (r && r.installed) st.installed = r.installed; else if (!S.hasBackend) { const n = { ...st.installed }; delete n[id]; st.installed = n; } } catch (er) {} const m = (st.catalog || []).find((x) => x.id === id); toast("Mod removed", `${(m && m.name) || "Mod"} deleted from your mods folder.`, "danger"); paint(); });
   }
 
   // Update just the progress-bar/percent elements in place so a download tick
@@ -398,7 +433,7 @@
   };
   // Shared fetch so the Dashboard can show the same pack data without duplicating it.
   window.ChudGetBundles = async function () {
-    try { const r = await S.invoke("library_bundles"); return (r && r.bundles) || []; }
+    try { const r = await S.invoke("library_bundles"); return (r && r.bundles) || (S.hasBackend ? [] : MOCK_BUNDLES); }
     catch (e) { return []; }
   };
 })();

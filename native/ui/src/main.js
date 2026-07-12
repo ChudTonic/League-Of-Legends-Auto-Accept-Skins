@@ -73,8 +73,9 @@ const NAV = [
 let libraryEnabled = false;
 let libraryEndpoint = "";
 async function loadLibraryState() {
-  try { const s = await invoke("library_get"); libraryEnabled = !!(s && s.enabled); libraryEndpoint = (s && s.endpoint) || ""; }
-  catch { libraryEnabled = false; }
+  // Browser preview (no backend): show the Library tab so index.html demos it.
+  try { const s = await invoke("library_get"); libraryEnabled = TAURI ? !!(s && s.enabled) : true; libraryEndpoint = (s && s.endpoint) || ""; }
+  catch { libraryEnabled = !TAURI; }
 }
 function navItems() {
   const items = NAV.slice();
