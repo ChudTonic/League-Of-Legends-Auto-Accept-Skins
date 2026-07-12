@@ -73,9 +73,22 @@ const NAV = [
   { page: "diagnostics", label: "Diagnostics", glyph: "diagnostics" },
 ];
 
+// Skin Library is a BETA feature — hidden until enabled from Settings.
+let libraryEnabled = false;
+let libraryEndpoint = "";
+async function loadLibraryState() {
+  try { const s = await invoke("library_get"); libraryEnabled = !!(s && s.enabled); libraryEndpoint = (s && s.endpoint) || ""; }
+  catch { libraryEnabled = false; }
+}
+function navItems() {
+  const items = NAV.slice();
+  if (libraryEnabled) items.splice(3, 0, { page: "library", label: "Skin Library", glyph: "skin" });
+  return items;
+}
+
 // ── Chrome ──────────────────────────────────────────────────────────────────
 function renderNav() {
-  document.getElementById("nav").innerHTML = NAV.map((n) => `
+  document.getElementById("nav").innerHTML = navItems().map((n) => `
     <div class="nav-item ${currentPage === n.page ? "active" : ""}" data-page="${n.page}">
       <span class="nav-ico">${ico(n.glyph)}</span><span>${n.label}</span>
     </div>`).join("");
@@ -233,6 +246,9 @@ function settingsHtml() {
   ${card("Presence", "profile", [
     setField("Appear offline", "Hide from your friends list while you play. Chud sets your chat status to offline and keeps re-asserting it (the client otherwise resets it). Applies instantly.", `<div class="tog ${appearOffline ? "on" : ""}" id="appearOfflineTog"><div class="knob"></div></div>`),
   ].join(""))}
+  ${card("Beta features", "bolt", [
+    setField("Skin Library", "Enable the in-app skin browser (work in progress). Adds a Skin Library tab to browse and install community skins.", `<div class="tog ${libraryEnabled ? "on" : ""}" id="libraryBetaTog"><div class="knob"></div></div>`),
+  ].join(""))}
   <div class="row"><button class="btn primary" id="saveCfg">Save settings</button><span class="dim mono" id="saveHint" style="font-size:11.5px"></span></div>
   </div>`;
 }
@@ -264,6 +280,14 @@ async function renderSettings() {
     await invoke("save_config", { cfg });
     const h = document.getElementById("saveHint"); if (h) { h.textContent = "Saved ✓"; setTimeout(() => { if (h) h.textContent = ""; }, 1800); }
     toast("Settings saved", "Configuration written to disk.", "success");
+  };
+  const libTog = document.getElementById("libraryBetaTog");
+  if (libTog) libTog.onclick = async () => {
+    libraryEnabled = !libraryEnabled;
+    libTog.classList.toggle("on", libraryEnabled);
+    try { await invoke("set_library_enabled", { enabled: libraryEnabled }); } catch { /* ignore */ }
+    renderNav(); // show/hide the Skin Library tab immediately
+    toast(libraryEnabled ? "Skin Library enabled" : "Skin Library hidden", libraryEnabled ? "A Skin Library tab was added to the sidebar." : "The Skin Library tab was removed.", libraryEnabled ? "success" : "neutral");
   };
   const aoTog = document.getElementById("appearOfflineTog");
   if (aoTog) aoTog.onclick = async () => {
@@ -927,6 +951,69 @@ function syncReadyCheck() {
   }
 }
 
+// ── Skin Library (BETA) ──────────────────────────────────────────────────────
+// Upstream source credited at runtime (decoded) so the public repo doesn't
+// carry the source site's domain in plaintext — a request from them.
+const LIB_SRC = (() => { try { return atob("cnVuZWZvcmdlLmRldg=="); } catch { return ""; } })();
+let librarySearch = "";
+let libraryPage = 0;
+let libraryData = null;
+let libraryLoading = false;
+
+async function fetchLibrary() {
+  libraryLoading = true; renderLibraryInner();
+  try { libraryData = await invoke("library_catalog", { search: librarySearch, page: libraryPage }); }
+  catch (e) { libraryData = { error: String(e), mods: [], total: 0 }; }
+  libraryLoading = false; renderLibraryInner();
+}
+
+function libraryCardHtml(m) {
+  // Clamp the champion list — some mods replace every champion, which would
+  // blow the card height out otherwise.
+  const chArr = (m.champions || []).map((c) => c.name);
+  const champs = chArr.length > 3 ? `${chArr.slice(0, 3).join(", ")} +${chArr.length - 3} more` : chArr.join(", ");
+  return `<div class="lib-card">
+    <div class="lib-thumb-wrap">${m.thumb ? `<img class="lib-thumb" loading="lazy" src="${esc(m.thumb)}" alt="" onerror="this.classList.add('broken')">` : ""}</div>
+    <div class="lib-body">
+      <div class="lib-name" title="${esc(m.name)}">${esc(m.name)}</div>
+      <div class="lib-meta">${esc(champs)}${m.publisher ? ` · by <b>${esc(m.publisher)}</b>` : ""}</div>
+    </div>
+    <button class="btn sm ghost lib-install" data-mod="${esc(m.id)}" disabled title="One-click install is coming soon">Install (soon)</button>
+  </div>`;
+}
+
+function renderLibraryInner() {
+  const el = document.getElementById("libGrid");
+  if (!el) return;
+  if (libraryLoading && !libraryData) { el.innerHTML = `<div class="dim" style="padding:16px">Loading skins…</div>`; return; }
+  const d = libraryData || {};
+  if (d.error) { el.innerHTML = `<div class="dim" style="padding:16px">Couldn't reach the library right now. (${esc(d.error)})</div>`; return; }
+  const mods = d.mods || [], total = d.total || 0, pageSize = d.pageSize || 48;
+  const pages = Math.max(1, Math.ceil(total / pageSize));
+  el.innerHTML = `
+    <div class="lib-count dim">${total.toLocaleString()} skin${total === 1 ? "" : "s"}${librarySearch ? ` matching “${esc(librarySearch)}”` : ""} · page ${libraryPage + 1}/${pages}</div>
+    <div class="lib-grid">${mods.map(libraryCardHtml).join("") || `<div class="dim" style="padding:16px">No skins found.</div>`}</div>
+    <div class="row" style="justify-content:center;gap:10px;margin-top:14px">
+      <button class="btn sm" id="libPrev" ${libraryPage <= 0 ? "disabled" : ""}>← Prev</button>
+      <button class="btn sm" id="libNext" ${libraryPage >= pages - 1 ? "disabled" : ""}>Next →</button>
+    </div>`;
+  const prev = document.getElementById("libPrev"); if (prev) prev.onclick = () => { if (libraryPage > 0) { libraryPage--; fetchLibrary(); } };
+  const next = document.getElementById("libNext"); if (next) next.onclick = () => { libraryPage++; fetchLibrary(); };
+}
+
+function renderLibrary() {
+  const p = document.getElementById("page");
+  p.innerHTML = `<div class="set-wrap"><div class="glass">
+    <div class="set-card-title"><span class="ci">${ico("skin")}</span>Skin Library <span class="beta-pill">BETA</span></div>
+    <div class="dim" style="font-size:12px;margin:-2px 0 12px">Browse community skins and (soon) install them in one click. Credit to each mod's author${LIB_SRC ? `, catalog via ${esc(LIB_SRC)}` : ""}.</div>
+    <span class="set-input-wrap" style="width:100%;margin-bottom:10px"><input class="set-input" id="libSearch" type="text" style="width:100%;text-align:left" placeholder="Search skins or champions…" value="${esc(librarySearch)}"></span>
+    <div id="libGrid"></div>
+  </div></div>`;
+  const s = document.getElementById("libSearch");
+  if (s) { let t = null; s.oninput = () => { clearTimeout(t); t = setTimeout(() => { librarySearch = s.value; libraryPage = 0; fetchLibrary(); }, 350); }; }
+  fetchLibrary();
+}
+
 // ── Page routing + actions ───────────────────────────────────────────────────
 function renderPage() {
   const page = document.getElementById("page");
@@ -934,6 +1021,7 @@ function renderPage() {
   else if (currentPage === "settings") { renderSettings(); }
   else if (currentPage === "profile") { window.renderProfile?.(page); }
   else if (currentPage === "skins") { renderSkins(); }
+  else if (currentPage === "library") { renderLibrary(); }
   else if (currentPage === "activity") { renderActivity(); }
   else if (currentPage === "diagnostics") { renderDiagnostics(); }
   else { page.innerHTML = `<div class="glass"><div class="muted">${esc(NAV.find((n) => n.page === currentPage)?.label || "")} — coming soon.</div></div>`; }
@@ -1064,6 +1152,7 @@ function onUpdateProgress(p) {
 // ── Boot ─────────────────────────────────────────────────────────────────────
 async function boot() {
   await loadGlyphs();
+  await loadLibraryState();
   const real = await invoke("get_state");
   if (real) state = real;
   renderNav(); renderTop(); renderPage(); syncReadyCheck();

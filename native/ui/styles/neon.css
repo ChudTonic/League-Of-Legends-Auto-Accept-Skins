@@ -559,3 +559,26 @@ body.no-motion *, body.no-motion *::before, body.no-motion *::after { animation:
   border: 1px solid var(--line-soft);
 }
 .fav-thumb.broken { visibility: hidden; }
+
+/* ── Skin Library (BETA) ───────────────────────────────────────────────── */
+.beta-pill {
+  font-size: 9.5px; font-weight: 700; letter-spacing: .5px; padding: 2px 7px; margin-left: 8px;
+  border-radius: 999px; vertical-align: middle;
+  color: var(--cyan-soft); background: color-mix(in srgb, var(--cyan) 18%, transparent);
+  border: 1px solid color-mix(in srgb, var(--cyan) 40%, transparent);
+}
+.lib-count { font-size: 12px; margin-bottom: 10px; }
+.lib-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); gap: 12px; }
+.lib-card {
+  display: flex; flex-direction: column; background: var(--bg-inset);
+  border: 1px solid var(--line-soft); border-radius: var(--r-md); overflow: hidden;
+  transition: border-color .15s ease, transform .15s ease;
+}
+.lib-card:hover { border-color: var(--line-strong); transform: translateY(-2px); }
+.lib-thumb-wrap { width: 100%; height: 118px; background: var(--bg-stage); overflow: hidden; }
+.lib-thumb { width: 100%; height: 100%; object-fit: cover; display: block; }
+.lib-thumb.broken { display: none; }
+.lib-body { padding: 8px 11px; flex: 1 1 auto; }
+.lib-name { font-weight: 600; font-size: 12.5px; color: var(--text-primary); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.lib-meta { font-size: 11px; color: var(--text-muted); margin-top: 3px; line-height: 1.35; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; overflow: hidden; }
+.lib-install { margin: 0 11px 11px; }
