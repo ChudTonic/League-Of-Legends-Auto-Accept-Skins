@@ -64,5 +64,9 @@ pub fn init() -> std::io::Result<()> {
     // Seed the cslol tools into user-data and run them from there, so an
     // installer update never has to overwrite a locked in-use mod-tools.exe.
     injection::tools::ensure_cslol_tools();
+    // Sync bundled Pengu plugins into the runtime folder every launch, so a
+    // plugin added in an update reaches the client even without re-activating
+    // Pengu (fixes new plugins never appearing after an auto-update).
+    pengu::ensure_synced();
     Ok(())
 }

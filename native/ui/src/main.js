@@ -416,6 +416,7 @@ async function loadClientCustom() {
   catch { clientCustom = {}; }
 }
 const CC_OPTS = [
+  ["hide_notif_badges", "Do Not Disturb", "Silence the attention-nag pips & badges (activity-center dot, call-to-action pips, Clash pip, rewards badge)"],
   ["hide_promos", "Hide promos & ads", "Deep-link promos and the Riot Discord banner"],
   ["hide_rp_topup", "Hide RP top-up", "The “buy RP” nudge on the currency bar"],
   ["hide_pass", "Hide battle pass", "The pass-progression widget on the home screen"],
