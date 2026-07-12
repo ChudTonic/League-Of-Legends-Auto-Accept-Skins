@@ -161,10 +161,15 @@ async function trickleMirror(env, n) {
   if (!env.FILES) return { mirrored: 0 };
   const all = await getCatalog(env);
   const done = await getMirrored(env);
+  // Prioritize the curated bundle skins so the featured packs become fully
+  // installable first, then fill in the rest of the catalog.
+  const bundleIds = new Set(BUNDLES.flatMap((b) => b.skinIds));
+  const order = [...all].sort((a, b) => (bundleIds.has(b.id) ? 1 : 0) - (bundleIds.has(a.id) ? 1 : 0));
   let count = 0;
-  for (const m of all) {
+  for (const m of order) {
     if (count >= n) break;
     if (done.has(m.id)) continue;
+    if (env.FILES && (await env.FILES.head(`f/${m.id}.fantome`))) { await addMirrored(env, m.id); continue; }
     const bytes = await mirrorFile(env, m.id);
     if (bytes != null) count++;
   }
@@ -230,6 +235,16 @@ async function serveImage(req, env, ctx, key) {
   ctx.waitUntil(cache.put(cacheKey, resp.clone()));
   return resp;
 }
+
+// Curated "cosmetic loadout" bundles: the top-installed skins per marquee
+// champion, shipped as one-click packs. Skin ids are catalog mod ids.
+const BUNDLES = [
+  { champ: "Yasuo", champId: 157, skinIds: ["b1355371-eb88-460d-a89a-beb4dae1400a", "fb42adb4-165c-4bbc-aa05-18e876bddd74", "08292f3d-5882-43ed-996c-32c9147f6f63", "83a4379d-fc9a-4133-89d3-8835b787f548", "193a6ae3-af69-451d-85b1-8b45bc3ca856"] },
+  { champ: "Ahri", champId: 103, skinIds: ["b6d8931d-d094-4cfd-b066-3b4926fcdf66", "d55eb66d-b26d-4158-9f59-8c804da04b9b", "18c364c6-6ad4-4ceb-9085-f503a1738de2", "ede331de-6956-4a26-a7ac-0474e6041523", "bafe8ce1-a6c6-4c38-8c49-de2a4d4d6b77"] },
+  { champ: "Zed", champId: 238, skinIds: ["5e7e9cb3-1779-45ea-926b-8bed90e811e6", "ebb87563-4f92-46eb-bcfa-2ae1eac29716", "8d141157-5984-4089-a52f-887646ee8e2e", "4503854d-d56e-42bb-bd39-ccd492261de7", "f354ceff-7a13-4d4f-b76a-314dd9457223"] },
+  { champ: "Jinx", champId: 222, skinIds: ["8d6d6c08-340b-45e3-8cd5-e45609b85365", "72f1df0b-7bac-400e-b320-f9c3f4b04199", "33d36a7f-b0b9-4a7a-aa02-20de40962ddd", "8dd4787c-f17e-4c2b-8010-995dbf5d79d4", "60a8b44d-6a21-4390-bdf2-080519636078"] },
+  { champ: "Katarina", champId: 55, skinIds: ["589ce9c0-7d1c-43b7-a381-e3c7fa069368", "9f957e1d-a96c-4251-b736-a23d859134da", "2f6c6e8d-423b-4dc1-9e1a-42253be8ecf2", "ebf2d318-6c1f-44fd-828b-f94912697df5", "9841715c-cd94-41f2-bc57-55d5bbfb1972"] },
+];
 
 export default {
   async scheduled(event, env, ctx) {
@@ -314,6 +329,48 @@ export default {
       const ready = await getMirrored(env);
       const mods = all.map((m) => ({ ...m, thumb: m.thumbKey ? `${origin}/img/${m.thumbKey}` : null, ready: ready.has(m.id) }));
       return json({ total: mods.length, readyCount: ready.size, mods });
+    }
+
+    // Curated champion bundles, enriched with live catalog details. `ready`
+    // is checked against R2 DIRECTLY (source of truth) — the KV mirrored-set
+    // loses updates under rapid read-modify-write, and it's only 25 files.
+    if (path === "/bundles") {
+      const all = await getCatalog(env);
+      const byId = new Map(all.map((m) => [m.id, m]));
+      const bundles = await Promise.all(BUNDLES.map(async (b) => ({
+        champ: b.champ,
+        champId: b.champId,
+        skins: (await Promise.all(b.skinIds.map(async (id) => {
+          const m = byId.get(id);
+          if (!m) return null;
+          const ready = env.FILES ? !!(await env.FILES.head(`f/${id}.fantome`)) : false;
+          return {
+            id,
+            name: m.name,
+            author: m.author,
+            installs: m.installs || 0,
+            thumb: m.thumbKey ? `${origin}/img/${m.thumbKey}` : null,
+            ready,
+          };
+        }))).filter(Boolean),
+      })));
+      return json({ bundles });
+    }
+
+    // Pre-mirror every bundle skin so the packs install instantly (guarded).
+    if (path === "/warmbundles") {
+      if (!env.CRAWL_KEY || url.searchParams.get("key") !== env.CRAWL_KEY) return json({ error: "forbidden" }, 403);
+      const ids = BUNDLES.flatMap((b) => b.skinIds);
+      let inR2 = 0, failed = 0;
+      for (const id of ids) {
+        try {
+          // mirrorFile no-ops if already in R2; run it for all so the ready-set
+          // stays marked too. Confirm against R2 head afterward (truth).
+          await mirrorFile(env, id);
+          if (env.FILES && (await env.FILES.head(`f/${id}.fantome`))) inR2++; else failed++;
+        } catch (e) { failed++; }
+      }
+      return json({ total: ids.length, inR2, failed });
     }
 
     if (path.startsWith("/img/")) {

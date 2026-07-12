@@ -22,6 +22,7 @@
     workingOnly: true, sort: "trending", railAll: false,
     selId: null, installed: {}, favs: [], installing: {}, autoUpdate: true,
     cats: [], themesList: [],
+    bundles: null, bundleInstalling: {},
   };
   let root = null;
 
@@ -202,12 +203,71 @@
     return `<div class="lb-main"><div class="lb-grid lb-grid-4">${favMods.map(cardHtml).join("")}</div></div>`;
   }
 
+  // ── bundles ──
+  function bundlesHtml() {
+    if (st.bundles === null) { fetchBundles(); return `<div class="lb-loading">${"<div class='lb-skel'></div>".repeat(3)}</div>`; }
+    if (!st.bundles.length) return `<div class="lb-empty"><div>No bundles available right now.</div></div>`;
+    const cards = st.bundles.map((b) => {
+      const nInst = b.skins.filter((s) => st.installed[s.id]).length;
+      const nReady = b.skins.filter((s) => s.ready).length;
+      const pct = st.bundleInstalling[b.champ];
+      const collage = b.skins.slice(0, 4).map((s) =>
+        `<div class="lb-bcell" style="${thumbStyle({ thumb: s.thumb, champId: b.champId, category: "Champion skins" })}">${s.thumb ? "" : thumbInner({ champId: b.champId })}</div>`).join("");
+      let action;
+      if (pct != null) action = `<div class="lb-mprog"><div class="lb-mprog-bar" style="width:${Math.round(pct)}%"></div></div><div class="lb-mprog-cap">Installing pack… ${Math.round(pct)}%</div>`;
+      else if (nInst >= b.skins.length && b.skins.length) action = `<span class="chip lb-chip-ok"><span class="lb-dot on"></span>INSTALLED · ${b.skins.length} skins</span>`;
+      else action = `<button class="btn primary lb-binstall" data-bundle="${esc(b.champ)}">↓ Install pack · ${b.skins.length} skins</button>`;
+      const sub = nInst ? `${b.skins.length} top skins · ${nInst}/${b.skins.length} installed` : `${b.skins.length} top skins · ${nReady} ready now`;
+      return `<div class="lb-bundle">
+        <div class="lb-bcollage">${collage}<span class="lb-bcount">${b.skins.length}</span></div>
+        <div class="lb-bbody">
+          <div class="lb-btitle">${b.champId ? `<img class="lb-ci" src="${CI(b.champId)}" alt="" onerror="this.style.display='none'">` : ""}<span>${esc(b.champ)}</span></div>
+          <div class="lb-bsub">${sub}</div>
+          <div class="lb-bnames">${b.skins.map((s) => esc(s.name)).join(" · ")}</div>
+          <div class="lb-baction">${action}</div>
+        </div>
+      </div>`;
+    }).join("");
+    return `<div class="lb-main">
+      <div class="lb-btop"><div class="lb-btop-t">Champion packs</div><div class="lb-btop-s">One click installs the top custom skins for a champ — then pick between them on the in-client Custom Mods button in champ select.</div></div>
+      <div class="lb-bgrid">${cards}</div>
+    </div>`;
+  }
+
+  async function fetchBundles() {
+    if (st._bundlesLoading) return; st._bundlesLoading = true;
+    try { const r = await inv("library_bundles"); st.bundles = (r && r.bundles) || []; }
+    catch (e) { console.error("bundles load failed", e); st.bundles = []; }
+    st._bundlesLoading = false; paint();
+  }
+
+  async function installBundle(champ) {
+    const b = (st.bundles || []).find((x) => x.champ === champ);
+    if (!b || st.bundleInstalling[champ] != null) return;
+    st.bundleInstalling[champ] = 4; paint();
+    const iv = setInterval(() => { const c = st.bundleInstalling[champ]; if (c == null) return clearInterval(iv); st.bundleInstalling[champ] = Math.min(93, c + 2 + Math.random() * 4); const bar = document.querySelector(".lb-bundle .lb-mprog-bar"); if (bar) bar.style.width = Math.round(st.bundleInstalling[champ]) + "%"; }, 220);
+    try {
+      const r = await inv("library_install_bundle", { champ: b.champ, champId: b.champId, skins: b.skins.map((s) => ({ id: s.id, name: s.name })) });
+      clearInterval(iv); delete st.bundleInstalling[champ];
+      const done = (r && r.installedRecords) || [];
+      done.forEach((id) => { const s = b.skins.find((x) => x.id === id); st.installed[id] = { name: s ? s.name : id, champ: b.champ, version: "1.0.0" }; });
+      const nFail = (r && r.failed && r.failed.length) || 0;
+      if (nFail) toast(`${b.champ} pack — ${r.installed} of ${b.skins.length} installed`, `${nFail} skin${nFail === 1 ? "" : "s"} still mirroring — try again shortly for the rest.`, "warning");
+      else toast(`${b.champ} pack installed`, `${r.installed} skins ready — pick them on the Custom Mods button in champ select.`, "success");
+    } catch (e) {
+      clearInterval(iv); delete st.bundleInstalling[champ];
+      toast("Pack install failed", String(e).slice(0, 120), "danger");
+    }
+    paint();
+  }
+
   function pageHtml() {
     const nInst = Object.keys(st.installed).length, nFav = st.favs.length;
-    const tabs = [["browse", "Browse"], ["installed", `Installed · ${nInst}`], ["favs", `Favorites · ${nFav}`]]
+    const tabs = [["browse", "Browse"], ["bundles", "★ Bundles"], ["installed", `Installed · ${nInst}`], ["favs", `Favorites · ${nFav}`]]
       .map(([k, l]) => `<button class="lb-seg-b ${st.tab === k ? "on" : ""}" data-tab="${k}">${l}</button>`).join("");
     let body;
     if (st.catalog === null) body = `<div class="lb-loading">${"<div class='lb-skel'></div>".repeat(6)}</div>`;
+    else if (st.tab === "bundles") body = bundlesHtml();
     else if (st.tab === "installed") body = installedHtml();
     else if (st.tab === "favs") body = favsHtml();
     else body = `<div class="lb-browse">${railHtml()}${browseHtml()}</div>`;
@@ -282,6 +342,7 @@
     on("[data-close]", "onclick", (e) => { if (e.target === e.currentTarget || e.currentTarget.classList.contains("lb-mx")) { st.selId = null; paint(); } });
     on("[data-fav]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.fav; const on2 = !st.favs.includes(id); try { const favs = await inv("library_set_favorite", { modId: id, on: on2 }); st.favs = favs || st.favs; } catch (er) {} paint(); });
     on("[data-install]", "onclick", (e) => { e.stopPropagation(); install(e.currentTarget.dataset.install); });
+    on("[data-bundle]", "onclick", (e) => { e.stopPropagation(); installBundle(e.currentTarget.dataset.bundle); });
     on("[data-remove]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.remove; try { const r = await inv("library_remove", { modId: id }); st.installed = (r && r.installed) || st.installed; } catch (er) {} const m = (st.catalog || []).find((x) => x.id === id); toast("Mod removed", `${(m && m.name) || "Mod"} deleted from your mods folder.`, "danger"); paint(); });
   }
 
@@ -322,5 +383,16 @@
     root = el;
     if (st.catalog === null) { paint(); await load(); }
     paint();
+  };
+
+  // Let the Dashboard's featured-pack cards deep-link into the Bundles tab.
+  window.ChudOpenBundles = function () {
+    st.tab = "bundles";
+    if (window.ChudNavTo) window.ChudNavTo("library");
+  };
+  // Shared fetch so the Dashboard can show the same pack data without duplicating it.
+  window.ChudGetBundles = async function () {
+    try { const r = await S.invoke("library_bundles"); return (r && r.bundles) || []; }
+    catch (e) { return []; }
   };
 })();

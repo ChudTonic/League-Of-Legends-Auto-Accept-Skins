@@ -956,6 +956,61 @@ fn library_category_dir(category: &str) -> Option<&'static str> {
 /// their own `mods/{category}` folder (matched by the wheel's category tabs).
 /// No separate "apply" step. The install record (config) persists across
 /// updates; `rec.file` is the path relative to `mods/` so removal can find it.
+/// Download one Library mod from the Worker (our R2) and place it in the
+/// custom-mod store, returning the install record (WITHOUT touching config —
+/// the caller records it, so `library_install_bundle` can batch a whole pack
+/// under one save). Shared by single install and bundle install.
+async fn place_library_mod(
+    base: &str,
+    http: &reqwest::Client,
+    mod_id: &str,
+    name: &str,
+    champ: &str,
+    champ_id: Option<i64>,
+    category: &str,
+) -> Result<config::InstalledMod, String> {
+    use skins::slog::{log_info, log_warn};
+    // Resolve the destination folder (relative to mods/) by category.
+    let rel_dir: std::path::PathBuf = match library_category_dir(category) {
+        Some(cat_dir) => std::path::PathBuf::from(cat_dir),
+        None => {
+            let cid = champ_id.filter(|&id| id > 0).or_else(|| resolve_champ_id_by_name(champ)).ok_or_else(|| {
+                log_warn!("[LIBRARY] no champion resolved for skin mod '{name}' (champ='{champ}')");
+                format!("Couldn't match \"{champ}\" to a champion.")
+            })?;
+            std::path::PathBuf::from("skins").join((cid * 1000).to_string())
+        }
+    };
+
+    let dl = http
+        .get(format!("{base}/download/{mod_id}"))
+        .send()
+        .await
+        .map_err(|e| { log_warn!("[LIBRARY] download-resolve failed for {mod_id}: {e}"); e.to_string() })?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let url = dl.get("url").and_then(|v| v.as_str()).ok_or("could not resolve download")?.to_string();
+    let bytes = http.get(&url).send().await.map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
+    let size_mb = (bytes.len() as f64) / 1_048_576.0;
+    // A tiny body is the Worker's 404 ("not found") — the file isn't mirrored /
+    // resolvable yet. Treat as a real failure so a bundle reports it, not a
+    // 9-byte .fantome written to disk.
+    if bytes.len() < 1024 {
+        return Err(format!("'{name}' isn't available yet (still mirroring) — try again shortly."));
+    }
+
+    let dir = skins::paths::mods_dir().join(&rel_dir);
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+    let stem = sanitize_mod_filename(name, mod_id);
+    let file_name = format!("{stem}.fantome");
+    tokio::fs::write(dir.join(&file_name), &bytes).await.map_err(|e| e.to_string())?;
+    let rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
+    log_info!("[LIBRARY] installed '{name}' ({size_mb:.1} MB) -> mods/{rel_file}");
+
+    Ok(config::InstalledMod { name: name.to_string(), champ: champ.to_string(), version: "1.0.0".into(), size_mb, file: rel_file })
+}
+
 #[tauri::command]
 async fn library_install(
     mod_id: String,
@@ -965,68 +1020,71 @@ async fn library_install(
     category: Option<String>,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
-    use skins::slog::{log_info, log_warn};
-    let category = category.unwrap_or_default();
-    log_info!("[LIBRARY] install requested: '{name}' (id={mod_id}, category='{category}', champ='{champ}', champId={champ_id:?})");
-
-    // Resolve the destination folder (relative to mods/) by category.
-    let rel_dir: std::path::PathBuf = match library_category_dir(&category) {
-        Some(cat_dir) => std::path::PathBuf::from(cat_dir),
-        None => {
-            // Champion skin: needs the numeric champ id for the skins/{champ*1000} slot.
-            let cid = champ_id.filter(|&id| id > 0).or_else(|| resolve_champ_id_by_name(&champ)).ok_or_else(|| {
-                log_warn!("[LIBRARY] install FAILED: no champion resolved for skin mod '{name}' (champ='{champ}')");
-                format!("Couldn't match \"{champ}\" to a champion, so this skin can't be placed. Try again or report it.")
-            })?;
-            std::path::PathBuf::from("skins").join((cid * 1000).to_string())
-        }
-    };
-
     let endpoint = { state.config.lock_safe().library.endpoint.clone() };
-    let base = endpoint.trim_end_matches('/');
     let http = lcu::build_client(180.0);
-    log_info!("[LIBRARY] resolving download URL for {mod_id}");
-    let dl = http
-        .get(format!("{base}/download/{mod_id}"))
-        .send()
-        .await
-        .map_err(|e| { log_warn!("[LIBRARY] download-resolve request failed: {e}"); e.to_string() })?
-        .json::<serde_json::Value>()
-        .await
-        .map_err(|e| e.to_string())?;
-    let url = dl.get("url").and_then(|v| v.as_str()).ok_or_else(|| {
-        log_warn!("[LIBRARY] no download URL for {mod_id} (not mirrored yet?)");
-        "could not resolve download".to_string()
-    })?.to_string();
-    log_info!("[LIBRARY] downloading {mod_id} from {url}");
-    let bytes = http.get(&url).send().await.map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
-    let size_mb = (bytes.len() as f64) / 1_048_576.0;
-    if bytes.len() < 1024 {
-        log_warn!("[LIBRARY] downloaded only {} bytes for '{name}' — likely not a real mod file", bytes.len());
-    }
-    log_info!("[LIBRARY] downloaded {size_mb:.2} MB for '{name}'");
-
-    let dir = skins::paths::mods_dir().join(&rel_dir);
-    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
-    let stem = sanitize_mod_filename(&name, &mod_id);
-    let file_name = format!("{stem}.fantome");
-    tokio::fs::write(dir.join(&file_name), &bytes).await.map_err(|e| e.to_string())?;
-    let rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
-    log_info!("[LIBRARY] installed '{name}' -> mods/{rel_file}");
-
-    let rec = config::InstalledMod {
-        name,
-        champ,
-        version: "1.0.0".into(),
-        size_mb,
-        file: rel_file,
-    };
+    let rec = place_library_mod(endpoint.trim_end_matches('/'), &http, &mod_id, &name, &champ, champ_id, &category.unwrap_or_default()).await?;
     {
         let mut c = state.config.lock_safe();
         c.library.installed.insert(mod_id, rec.clone());
         let _ = c.save();
     }
     Ok(serde_json::to_value(rec).unwrap_or_else(|_| json!({})))
+}
+
+/// The curated champion bundles (from the Worker), enriched with per-skin
+/// details + `ready` (mirrored) flags for the Library/Dashboard UI.
+#[tauri::command]
+async fn library_bundles(state: tauri::State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let endpoint = { state.config.lock_safe().library.endpoint.clone() };
+    let http = lcu::build_client(20.0);
+    let resp = http.get(format!("{}/bundles", endpoint.trim_end_matches('/'))).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Install a whole champion bundle in one shot: every skin lands in that
+/// champ's custom-mod slot, so all of them show on the in-client Custom Mods
+/// button in champ select. `skins` is `[{id, name}, ...]`. Skips (and reports)
+/// any skin that isn't mirrored/resolvable yet rather than failing the pack.
+#[tauri::command]
+async fn library_install_bundle(
+    champ: String,
+    champ_id: Option<i64>,
+    skins: Vec<serde_json::Value>,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    use skins::slog::{log_info, log_warn};
+    let endpoint = { state.config.lock_safe().library.endpoint.clone() };
+    let base = endpoint.trim_end_matches('/').to_string();
+    let http = lcu::build_client(180.0);
+    log_info!("[LIBRARY] installing bundle '{champ}' ({} skins)", skins.len());
+
+    let mut recs: Vec<(String, config::InstalledMod)> = Vec::new();
+    let mut failed: Vec<String> = Vec::new();
+    for s in &skins {
+        let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
+        let nm = s.get("name").and_then(|v| v.as_str()).unwrap_or("Skin").to_string();
+        if id.is_empty() {
+            continue;
+        }
+        match place_library_mod(&base, &http, &id, &nm, &champ, champ_id, "champion_skin").await {
+            Ok(rec) => recs.push((id, rec)),
+            Err(e) => { log_warn!("[LIBRARY] bundle '{champ}' skin '{nm}' skipped: {e}"); failed.push(nm); }
+        }
+    }
+    {
+        let mut c = state.config.lock_safe();
+        for (id, rec) in &recs {
+            c.library.installed.insert(id.clone(), rec.clone());
+        }
+        let _ = c.save();
+    }
+    log_info!("[LIBRARY] bundle '{champ}': {} installed, {} skipped", recs.len(), failed.len());
+    Ok(json!({ "champ": champ, "installed": recs.len(), "failed": failed, "installedRecords": c_installed_ids(&recs) }))
+}
+
+/// Small helper: the mod ids just installed by a bundle (for the UI to mark).
+fn c_installed_ids(recs: &[(String, config::InstalledMod)]) -> Vec<String> {
+    recs.iter().map(|(id, _)| id.clone()).collect()
 }
 
 /// Remove an installed mod (delete the file + forget the record).
@@ -1276,6 +1334,8 @@ pub fn run() {
             library_set_auto_update,
             library_install,
             library_remove,
+            library_bundles,
+            library_install_bundle,
             updater_check,
             updater_install
         ])

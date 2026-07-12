@@ -150,6 +150,25 @@ function modCard(t) {
     <div class="mod-flow"><i></i></div>
   </div>`;
 }
+// Featured champion packs on the dashboard (freed by removing Camera Assist).
+// Data comes from the Library's shared fetch; cards deep-link into the Library
+// Bundles tab where the install lives, so there's one install path.
+let dashBundles = null;
+const CIcon = (id) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${id}.png`;
+function featuredPacksHtml() {
+  if (dashBundles === null) return `<div class="dash-sec"><span class="section-label">Featured packs</span><span class="rule"></span></div><div class="packs"><div class="pack-loading">Loading champion packs…</div></div>`;
+  if (!dashBundles.length) return "";
+  const cards = dashBundles.slice(0, 4).map((b) => {
+    const collage = b.skins.slice(0, 4).map((sk) => `<div class="pack-cell" style="background-image:url('${sk.thumb || ""}')"></div>`).join("");
+    return `<button class="pack-card" data-openbundle="1">
+      <div class="pack-collage">${collage}<span class="pack-n">${b.skins.length}</span></div>
+      <div class="pack-body"><div class="pack-name"><img class="pack-ci" src="${CIcon(b.champId)}" alt="" onerror="this.style.display='none'"><span>${esc(b.champ)}</span></div><div class="pack-sub">${b.skins.length} top skins</div></div>
+    </button>`;
+  }).join("");
+  return `<div class="dash-sec"><span class="section-label">Featured packs</span><span class="rule"></span><button class="btn sm" data-openbundle="1">Browse all →</button></div>
+    <div class="packs">${cards}</div>`;
+}
+
 function dashboardHtml() {
   const s = state.summary;
   const aa = state.tools.find((x) => x.id === "auto_accept") || {};
@@ -181,6 +200,7 @@ function dashboardHtml() {
       <button class="btn sm" id="stopAll2Btn" ${state.activeToolCount > 0 ? "" : "disabled"}>Stop</button>
     </div>
     <div class="modules">${state.tools.map(modCard).join("")}</div>
+    ${libraryEnabled ? featuredPacksHtml() : ""}
   </div>`;
 }
 // Signature of everything the module cards render. Rebuilding them on every
@@ -199,6 +219,15 @@ function wireDash() {
   const sb = document.getElementById("stopAll2Btn"); if (sb) sb.onclick = onStopAll;
   const sh = document.getElementById("stopAllHero"); if (sh) sh.onclick = onStopAll;
   document.querySelectorAll("#page [data-admin]").forEach((b) => (b.onclick = () => invoke("request_admin")));
+  document.querySelectorAll("#page [data-openbundle]").forEach((b) => (b.onclick = () => window.ChudOpenBundles && window.ChudOpenBundles()));
+  // Lazy-load the featured packs once, then repaint the dashboard with them.
+  if (libraryEnabled && dashBundles === null && !window._dashBundlesLoading && window.ChudGetBundles) {
+    window._dashBundlesLoading = true;
+    window.ChudGetBundles().then((bs) => {
+      dashBundles = bs || []; window._dashBundlesLoading = false;
+      if (currentPage === "dashboard") { const p = document.getElementById("page"); p.innerHTML = dashboardHtml(); wireDash(); }
+    });
+  }
 }
 
 // ── Settings ──────────────────────────────────────────────────────────────
