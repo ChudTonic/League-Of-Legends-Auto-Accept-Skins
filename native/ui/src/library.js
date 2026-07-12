@@ -139,7 +139,7 @@
 
     return `<aside class="lb-rail glass">
       <div class="lb-search"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.8"><circle cx="11" cy="11" r="7"/><path d="m21 21-4.3-4.3"/></svg><input id="lbSearch" type="text" placeholder="Search mods…" value="${esc(st.q)}"><kbd>/</kbd></div>
-      <div class="lb-sec-l">CHAMPIONS</div><div class="lb-rail-list">${champRows}${showAll}</div>
+      <div class="lb-sec-l">CHAMPIONS</div><div class="lb-rail-list ${st.railAll ? "lb-rail-scroll" : ""}">${champRows}</div>${showAll}
       <div class="lb-div"></div>
       <div class="lb-sec-l">CATEGORY</div><div class="lb-rail-list">${catRows}</div>
       <div class="lb-div"></div>

@@ -123,3 +123,7 @@
 .lb-qa.lb-disabled { opacity: .3; cursor: default; }
 .lb-qa.lb-disabled:hover { border-color: rgba(255,255,255,0.14); }
 .lb-inchamp { font-family: var(--font-mono); font-size: 10.5px; color: #33e0a0; letter-spacing: .02em; white-space: nowrap; }
+.lb-rail-list.lb-rail-scroll { max-height: 300px; overflow-y: auto; padding-right: 4px; }
+.lb-rail-list.lb-rail-scroll::-webkit-scrollbar { width: 6px; }
+.lb-rail-list.lb-rail-scroll::-webkit-scrollbar-track { background: rgba(0,0,0,0.3); }
+.lb-rail-list.lb-rail-scroll::-webkit-scrollbar-thumb { background: #3d4a68; border-radius: 3px; }
