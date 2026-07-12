@@ -141,7 +141,15 @@ pub struct Runes {
 
 impl Default for Runes {
     fn default() -> Self {
-        Self { enabled: false, auto_import: true, endpoint: String::new(), sort: "winrate".into() }
+        Self {
+            // Opt-in (off by default so we never silently overwrite someone's
+            // rune page), but pre-pointed at Chud's runes Worker so turning the
+            // toggle on is all it takes.
+            enabled: false,
+            auto_import: true,
+            endpoint: "https://chud-runes.jivy26.workers.dev/runes".into(),
+            sort: "winrate".into(),
+        }
     }
 }
 

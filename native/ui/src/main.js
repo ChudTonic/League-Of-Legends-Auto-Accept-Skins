@@ -224,6 +224,11 @@ function settingsHtml() {
     setField("Block in ranked", "Disable injection tools in ranked games", togCtl("safety", "block_in_ranked")),
     setField("Risk acknowledged", "Vanguard ban risk accepted", togCtl("safety", "injection_ack")),
   ].join(""))}
+  ${card("Rune Import", "bolt", [
+    setField("Auto-import on champ pick", "Best runes + spells + starting build for your champ, current patch (via u.gg)", togCtl("runes", "enabled")),
+    setField("Build source", "Highest win-rate or most popular", segMode("runes", "sort", ["winrate", "popular"])),
+    setField("Import now", "Pull the build for your currently-picked champion", `<button class="btn ghost sm" id="runesImportNow">Import build</button>`),
+  ].join(""))}
   <div class="row"><button class="btn primary" id="saveCfg">Save settings</button><span class="dim mono" id="saveHint" style="font-size:11.5px"></span></div>
   </div>`;
 }
@@ -254,6 +259,20 @@ async function renderSettings() {
     await invoke("save_config", { cfg });
     const h = document.getElementById("saveHint"); if (h) { h.textContent = "Saved ✓"; setTimeout(() => { if (h) h.textContent = ""; }, 1800); }
     toast("Settings saved", "Configuration written to disk.", "success");
+  };
+  const importBtn = document.getElementById("runesImportNow");
+  if (importBtn) importBtn.onclick = async () => {
+    // Save first so the (possibly just-toggled) enable/sort are in effect.
+    await invoke("save_config", { cfg });
+    importBtn.disabled = true; importBtn.textContent = "Importing…";
+    const res = await invoke("runes_import_now");
+    importBtn.disabled = false; importBtn.textContent = "Import build";
+    if (res && (res.runes || res.spells || res.items)) {
+      const parts = [res.runes && "runes", res.spells && "spells", res.items && "items"].filter(Boolean).join(" + ");
+      toast("Build imported", `Applied ${parts} for your champion.`, "success");
+    } else {
+      toast("Couldn't import", "Enable Rune Import, and be in champ select with a champion picked.", "warning");
+    }
   };
 }
 
