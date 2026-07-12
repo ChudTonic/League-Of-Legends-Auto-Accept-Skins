@@ -408,6 +408,25 @@ let skinsFavorites = {};        // { "<champ_id>": <skin_id> }
 let favSearch = "";
 let favExpandedChamp = null;    // champ_id whose skins are shown
 
+// In-client declutter/customization toggles (mirrors config.client; applied by
+// the CHUD-Declutter Pengu plugin).
+let clientCustom = null;
+async function loadClientCustom() {
+  try { clientCustom = (await invoke("skins_get_customization")) || {}; }
+  catch { clientCustom = {}; }
+}
+const CC_OPTS = [
+  ["hide_promos", "Hide promos & ads", "Deep-link promos and the Riot Discord banner"],
+  ["hide_rp_topup", "Hide RP top-up", "The “buy RP” nudge on the currency bar"],
+  ["hide_pass", "Hide battle pass", "The pass-progression widget on the home screen"],
+  ["hide_missions", "Hide missions", "Missions button / progression widget"],
+  ["hide_challenges", "Hide challenge banners", "Challenge and lobby banners"],
+  ["hide_event_timers", "Hide event timers", "Event countdown in the game-select bar"],
+  ["hide_loot", "Hide Loot tab", "Removes the Loot tab from the nav bar"],
+  ["hide_store", "Hide Store tab", "Removes the Store tab from the nav bar"],
+  ["hide_home_video", "Static home background", "Stops the animated play-screen video"],
+];
+
 async function loadSkinsState() {
   skinsState = (await invoke("skins_get_state")) || structuredClone(DEFAULT_SKINS_STATE);
   skinsCfg = {
@@ -637,12 +656,39 @@ function bindFavListEvents() {
   });
 }
 
+// ── Client declutter card ─────────────────────────────────────────────────────
+function clientCustomCardInner() {
+  const cc = clientCustom || {};
+  const sub = cc.enabled
+    ? CC_OPTS.map(([k, label, hint]) => setField(label, hint, `<div class="tog ${cc[k] ? "on" : ""}" data-cc="${k}"><div class="knob"></div></div>`)).join("")
+    : `<div class="dim" style="padding:6px 2px;font-size:12px">Turn on to choose what to hide.</div>`;
+  return `<div class="set-card-title"><span class="ci">${ico("settings")}</span>Client Declutter</div>
+    <div class="dim" style="font-size:12px;margin:-4px 0 10px">Hide the League client's promos, store pushes, battle-pass and event clutter. Applies live — needs Pengu Loader active.</div>
+    <div class="set-list">
+      ${setField("Enable declutter", "Master switch for all the toggles below", `<div class="tog ${cc.enabled ? "on" : ""}" data-cc="enabled"><div class="knob"></div></div>`)}
+      ${sub}
+    </div>`;
+}
+function clientCustomCard() { return `<div class="glass set-card" id="ccCard">${clientCustomCardInner()}</div>`; }
+function rerenderCcCard() { const c = document.getElementById("ccCard"); if (!c) return; c.innerHTML = clientCustomCardInner(); wireClientCustom(); }
+function wireClientCustom() {
+  document.querySelectorAll("#ccCard [data-cc]").forEach((t) => t.onclick = async () => {
+    const k = t.dataset.cc;
+    clientCustom = clientCustom || {};
+    clientCustom[k] = !clientCustom[k];
+    const fresh = await invoke("skins_set_customization", { customization: clientCustom });
+    if (fresh && typeof fresh === "object") clientCustom = fresh;
+    rerenderCcCard();
+  });
+}
+
 async function renderSkins() {
   const p = document.getElementById("page");
   if (!skinsState) {
     p.innerHTML = `<div class="glass"><div class="muted">Loading skins state…</div></div>`;
     await loadSkinsState();
   }
+  if (clientCustom === null) await loadClientCustom();
   // Load the favorites catalog BEFORE first paint (same as skinsState above), so
   // the champ list renders populated and A-Z on the first frame — no lazy
   // rerender race that could leave the default (unsearched) view blank.
@@ -660,10 +706,12 @@ async function renderSkins() {
     <div class="diag-grid">${skinsStatusCard()}${skinsSetupCard()}</div>
     ${skinsSettingsCard()}
     ${skinsFavoritesCard()}
+    ${clientCustomCard()}
     ${skinsPartyCard()}
   </div>`;
   wireSkins();
   wireFavorites();
+  wireClientCustom();
   startSkinsPoll();
 }
 

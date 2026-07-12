@@ -52,8 +52,25 @@ pub async fn route(ctx: &BridgeContext, path: &str, origin: Option<&str>) -> Res
     if let Some(rest) = path_clean.strip_prefix("/plugin/") {
         return handle_plugin(rest, origin);
     }
+    if path_clean == "/client-customization" {
+        return handle_client_customization(ctx, origin);
+    }
 
     not_found()
+}
+
+/// Serve the in-client declutter/customization config as JSON. The
+/// `CHUD-Declutter` Pengu plugin polls this and (re)injects CSS accordingly.
+fn handle_client_customization(ctx: &BridgeContext, origin: Option<&str>) -> Response {
+    use crate::LockExt;
+    use tauri::Manager;
+    let state = ctx.app.state::<std::sync::Arc<crate::AppState>>();
+    let client = { state.config.lock_safe().client.clone() };
+    let json = serde_json::to_string(&client).unwrap_or_else(|_| "{}".to_string());
+    let mut builder =
+        Response::builder().status(StatusCode::OK).header(axum::http::header::CONTENT_TYPE, "application/json");
+    builder = apply_cors(builder, origin);
+    builder.body(Body::from(json)).unwrap_or_else(|_| not_found())
 }
 
 /// A path segment taken verbatim from the request URL: reject anything that

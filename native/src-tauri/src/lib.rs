@@ -681,6 +681,28 @@ fn skins_set_enabled(enabled: bool, state: tauri::State<Arc<AppState>>) -> serde
     skins_snapshot(&state)
 }
 
+/// In-client declutter/customization config (read by the CHUD-Declutter plugin
+/// via the bridge). Returns the current toggles.
+#[tauri::command]
+fn skins_get_customization(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    serde_json::to_value(state.config.lock_safe().client.clone()).unwrap_or_else(|_| json!({}))
+}
+
+/// Persist the in-client declutter toggles. The CHUD-Declutter plugin polls the
+/// bridge and re-applies within a few seconds; no client restart needed.
+#[tauri::command]
+fn skins_set_customization(customization: serde_json::Value, state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    {
+        let mut cfg = state.config.lock_safe();
+        if let Ok(parsed) = serde_json::from_value::<config::ClientCustomization>(customization) {
+            cfg.client = parsed;
+        }
+        let _ = cfg.save();
+    }
+    state.config_gen.fetch_add(1, Ordering::SeqCst);
+    serde_json::to_value(state.config.lock_safe().client.clone()).unwrap_or_else(|_| json!({}))
+}
+
 /// The browsable skin catalog (every champ + its skins, flagged downloaded)
 /// for the favorites picker UI. Takes `_state` purely so it matches the shape
 /// of every other registered command — a zero-argument sync command did not
@@ -1018,6 +1040,8 @@ pub fn run() {
             skins_download,
             skins_activate_pengu,
             skins_set_enabled,
+            skins_get_customization,
+            skins_set_customization,
             skins_catalog,
             skins_get_favorites,
             skins_set_favorite,

@@ -153,6 +153,53 @@ impl Default for Runes {
     }
 }
 
+/// In-client declutter/ad-remover toggles. Consumed by the `CHUD-Declutter`
+/// Pengu plugin, which fetches this over the bridge (`/client-customization`)
+/// and injects CSS to hide the matching League-client elements. Every option
+/// defaults OFF (opt-in) so a fresh install never silently alters the client.
+/// Selectors were captured from the live client DOM (see CHUD-Declutter CSS).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct ClientCustomization {
+    /// Master switch — when false the plugin removes all its injected CSS.
+    pub enabled: bool,
+    /// Hide the Store nav tab.
+    pub hide_store: bool,
+    /// Hide the Loot nav tab.
+    pub hide_loot: bool,
+    /// Hide the missions button / progression widget on the home screen.
+    pub hide_missions: bool,
+    /// Hide the battle-pass progression widget.
+    pub hide_pass: bool,
+    /// Hide promo deep-links and the Riot Discord banner (ads).
+    pub hide_promos: bool,
+    /// Hide the "buy RP / top up" nudge on the currency counter.
+    pub hide_rp_topup: bool,
+    /// Hide challenge/lobby banners.
+    pub hide_challenges: bool,
+    /// Hide the event countdown timer in the game-select bar.
+    pub hide_event_timers: bool,
+    /// Hide the animated video background on the play/home screen.
+    pub hide_home_video: bool,
+}
+
+impl Default for ClientCustomization {
+    fn default() -> Self {
+        Self {
+            enabled: false,
+            hide_store: false,
+            hide_loot: false,
+            hide_missions: false,
+            hide_pass: false,
+            hide_promos: false,
+            hide_rp_topup: false,
+            hide_challenges: false,
+            hide_event_timers: false,
+            hide_home_video: false,
+        }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -163,6 +210,7 @@ pub struct Config {
     pub safety: Safety,
     pub skins: SkinsCfg,
     pub runes: Runes,
+    pub client: ClientCustomization,
 }
 
 /// Per-user config file path: `%APPDATA%/LeagueOfLegendsTools/config.json`.
