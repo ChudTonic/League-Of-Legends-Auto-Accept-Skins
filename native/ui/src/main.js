@@ -94,9 +94,17 @@ function renderNav() {
     </div>`).join("");
   document.querySelectorAll(".nav-item").forEach((el) => (el.onclick = () => navTo(el.dataset.page)));
 }
+let _topSig = null;
 function renderTop() {
-  const n = state.activeToolCount, col = n > 0 ? "#33e0a0" : "#6b6b96";
-  const online = state.clientOnline, oc = online ? "#33e0a0" : "#6b6b96";
+  const n = state.activeToolCount;
+  const online = state.clientOnline;
+  // The topbar only reflects tool count + client-online — skip the DOM writes
+  // (fired ~1/s via state-changed) when neither changed.
+  const sig = `${n}|${online ? 1 : 0}`;
+  if (sig === _topSig) return;
+  _topSig = sig;
+  const col = n > 0 ? "#33e0a0" : "#6b6b96";
+  const oc = online ? "#33e0a0" : "#6b6b96";
   const tc = document.getElementById("topClient");
   tc.style.color = oc; tc.style.borderColor = oc + "55"; tc.style.background = oc + "18";
   tc.innerHTML = `<span class="slight ${online ? "on" : ""}" style="width:6px;height:6px;background:${oc};color:${oc}"></span>${online ? "Client linked" : "Client offline"}`;
@@ -183,7 +191,9 @@ function dashboardHtml() {
 // state event (uptime ticks ~1/s) would restart their animations and could
 // swallow a toggle click landing mid-rebuild, so we only rebuild on change.
 let modulesSig = "";
-const currentModulesSig = () => JSON.stringify([state.tools, state.injectionAck, state.adminReady]);
+const currentModulesSig = () =>
+  (state.tools || []).map((t) => `${t.id}:${t.running}:${t.statusText}:${t.statusTone}:${t.metricValue}`).join("|") +
+  `|${state.injectionAck}|${state.adminReady}`;
 
 function wireDash() {
   modulesSig = currentModulesSig();
@@ -914,6 +924,9 @@ function startSkinsPoll() {
   stopSkinsPoll();
   skinsPollTimer = setInterval(async () => {
     if (currentPage !== "skins") { stopSkinsPoll(); return; }
+    // Party mode is opt-in — no need to poll its state when it's off (the
+    // enable/add-peer handlers refresh it directly). Saves an IPC call every 3s.
+    if (!skinsState || !skinsState.party || !skinsState.party.enabled) return;
     const fresh = await invoke("skins_party_get_state");
     if (fresh) { skinsState.party = fresh; refreshPartyCard(); }
   }, 3000);

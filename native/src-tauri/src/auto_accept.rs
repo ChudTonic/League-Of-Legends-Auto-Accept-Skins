@@ -70,7 +70,10 @@ pub async fn run(app: AppHandle, state: Arc<AppState>, generation: u64) {
 
     while current(&state, generation) {
         if auth.is_none() {
-            auth = lcu::find_auth();
+            // Shared cache — other subsystems (ranked monitor, phase actor,
+            // ticker) read the same, so we avoid each loop doing its own full
+            // process-table scan on LCU startup/reconnect.
+            auth = lcu::cached_auth();
         }
         match auth.clone() {
             None => {

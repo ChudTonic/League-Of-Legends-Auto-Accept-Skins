@@ -90,6 +90,14 @@ impl<T> LockExt<T> for Mutex<T> {
     }
 }
 
+/// Admin status can't change during a process's lifetime (Windows elevation
+/// needs a fresh process), so cache it — `snapshot` runs ~1/s while armed and
+/// `winutil::is_admin` is a Win32 syscall.
+fn admin_cached() -> bool {
+    static ADMIN: std::sync::OnceLock<bool> = std::sync::OnceLock::new();
+    *ADMIN.get_or_init(winutil::is_admin)
+}
+
 /// Build the full UI state payload. Same shape for `get_state` and the
 /// `state-changed` event so the front-end handles both identically.
 fn snapshot(state: &AppState) -> serde_json::Value {
@@ -99,7 +107,7 @@ fn snapshot(state: &AppState) -> serde_json::Value {
         let c = state.config.lock_safe();
         (c.safety.injection_ack, c.autorange.range_hold_key.to_uppercase(), c.camera.recenter_mode.clone())
     };
-    let admin = winutil::is_admin();
+    let admin = admin_cached();
     let range_running = state.auto_range_running.load(Ordering::SeqCst);
     let camera_running = state.camera_running.load(Ordering::SeqCst);
     let blocked = state.injection_blocked.load(Ordering::SeqCst);

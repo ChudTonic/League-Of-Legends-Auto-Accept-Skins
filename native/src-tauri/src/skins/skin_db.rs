@@ -14,15 +14,18 @@
 #![allow(dead_code)]
 
 use std::collections::HashMap;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 
 use crate::skins::paths;
 use crate::skins::slog::{log_info, log_warn};
 
 /// lang -> (normalized-name -> skin_id). Loaded lazily, cached per language.
-static DB: OnceLock<Mutex<HashMap<String, HashMap<String, i64>>>> = OnceLock::new();
+/// Stored behind `Arc` so a cache hit is an O(1) refcount bump, not a full
+/// clone of the (thousands-of-entries) map — this is hit repeatedly during
+/// ARAM bench swaps.
+static DB: OnceLock<Mutex<HashMap<String, Arc<HashMap<String, i64>>>>> = OnceLock::new();
 
-fn cache() -> &'static Mutex<HashMap<String, HashMap<String, i64>>> {
+fn cache() -> &'static Mutex<HashMap<String, Arc<HashMap<String, i64>>>> {
     DB.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
@@ -45,15 +48,15 @@ fn load_lang(lang: &str) -> Option<HashMap<String, i64>> {
     Some(map)
 }
 
-fn lang_map(lang: &str) -> Option<HashMap<String, i64>> {
+fn lang_map(lang: &str) -> Option<Arc<HashMap<String, i64>>> {
     {
         let g = cache().lock().unwrap_or_else(|e| e.into_inner());
         if let Some(m) = g.get(lang) {
-            return Some(m.clone());
+            return Some(Arc::clone(m)); // O(1) refcount bump, not a map clone
         }
     }
-    let loaded = load_lang(lang)?;
-    cache().lock().unwrap_or_else(|e| e.into_inner()).insert(lang.to_string(), loaded.clone());
+    let loaded = Arc::new(load_lang(lang)?);
+    cache().lock().unwrap_or_else(|e| e.into_inner()).insert(lang.to_string(), Arc::clone(&loaded));
     Some(loaded)
 }
 
@@ -75,7 +78,7 @@ pub fn resolve_skin_id(name: &str, lang: Option<&str>) -> Option<i64> {
             return Some(id);
         }
         let mut best: Option<(usize, i64)> = None;
-        for (k, &id) in &map {
+        for (k, &id) in map.iter() {
             if k.contains(&needle) || needle.contains(k.as_str()) {
                 let diff = k.len().abs_diff(needle.len());
                 if best.map_or(true, |(b, _)| diff < b) {

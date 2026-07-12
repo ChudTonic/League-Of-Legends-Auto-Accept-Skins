@@ -44,13 +44,13 @@ pub async fn route(ctx: &BridgeContext, path: &str, origin: Option<&str>) -> Res
         return text_response(port.to_string(), origin);
     }
     if let Some(rest) = path_clean.strip_prefix("/preview/") {
-        return handle_preview(rest, origin);
+        return handle_preview(rest, origin).await;
     }
     if let Some(rest) = path_clean.strip_prefix("/asset/") {
-        return handle_asset(rest, origin);
+        return handle_asset(rest, origin).await;
     }
     if let Some(rest) = path_clean.strip_prefix("/plugin/") {
-        return handle_plugin(rest, origin);
+        return handle_plugin(rest, origin).await;
     }
     if path_clean == "/client-customization" {
         return handle_client_customization(ctx, origin);
@@ -79,7 +79,7 @@ fn is_safe_segment(segment: &str) -> bool {
     !segment.is_empty() && segment != "." && segment != ".." && !segment.contains(['/', '\\'])
 }
 
-fn handle_preview(rest: &str, origin: Option<&str>) -> Response {
+async fn handle_preview(rest: &str, origin: Option<&str>) -> Response {
     let parts: Vec<&str> = rest.split('/').collect();
     if parts.len() < 3 {
         return not_found();
@@ -99,10 +99,10 @@ fn handle_preview(rest: &str, origin: Option<&str>) -> Response {
         skins_dir.join(champion_id).join(skin_id).join(chroma_id).join(format!("{chroma_id}.png"))
     };
 
-    serve_file(&file_path, "image/png", origin)
+    serve_file(&file_path, "image/png", origin).await
 }
 
-fn handle_asset(rest: &str, origin: Option<&str>) -> Response {
+async fn handle_asset(rest: &str, origin: Option<&str>) -> Response {
     // `paths::get_asset_path` already does the full traversal-hardening
     // dance (lexical component rejection + canonicalize-under-check); this
     // is a thin re-use, not a reimplementation.
@@ -111,10 +111,10 @@ fn handle_asset(rest: &str, origin: Option<&str>) -> Response {
         return not_found();
     }
     let content_type = content_type_for(&asset_file);
-    serve_file(&asset_file, content_type, origin)
+    serve_file(&asset_file, content_type, origin).await
 }
 
-fn handle_plugin(rest: &str, origin: Option<&str>) -> Response {
+async fn handle_plugin(rest: &str, origin: Option<&str>) -> Response {
     let mut parts = rest.splitn(2, '/');
     let (Some(plugin_name), Some(file_name)) = (parts.next(), parts.next()) else {
         return not_found();
@@ -138,11 +138,14 @@ fn handle_plugin(rest: &str, origin: Option<&str>) -> Response {
     let plugins_dir = paths::pengu_loader_dir().join("plugins");
     let file_path = plugins_dir.join(plugin_name).join(file_path_rel);
     let content_type = content_type_for(&file_path);
-    serve_file(&file_path, content_type, origin)
+    serve_file(&file_path, content_type, origin).await
 }
 
-fn serve_file(path: &Path, content_type: &str, origin: Option<&str>) -> Response {
-    match std::fs::read(path) {
+async fn serve_file(path: &Path, content_type: &str, origin: Option<&str>) -> Response {
+    // Async read — a blocking std::fs::read here stalls the shared tokio reactor
+    // thread (which also drives the Pengu-plugin WS ping/pong) on an AV-scanned
+    // or OneDrive-redirected path.
+    match tokio::fs::read(path).await {
         Ok(bytes) => file_response(bytes, content_type, origin),
         Err(_) => not_found(),
     }
