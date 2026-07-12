@@ -150,10 +150,19 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
 
     if let Some(custom_mod) = &selected_custom_mod {
         let target_skin_id = custom_mod.skin_id;
-        let is_owned = owned_skin_ids.contains(&target_skin_id);
+        // A base skin (`skin_id % 1000 == 0`) is always "owned" — everyone has
+        // it and its assets are already in the game, so there's NO downloadable
+        // base-skin ZIP to fetch. Riot's inventory only lists purchased skins,
+        // so without this a library custom mod (which targets the base slot
+        // `champ*1000`) is treated as unowned and dies looking for a base-skin
+        // ZIP. Treating it as owned routes it to the mods-only overlay (no ZIP);
+        // `run_custom_mod_injection` still force-selects the base skin so the
+        // game loads the assets the mod overrides.
+        let target_is_base = target_skin_id % 1000 == 0;
+        let is_owned = target_is_base || owned_skin_ids.contains(&target_skin_id);
         let base_skin_name = if is_owned { None } else { Some(name.clone()) };
         if is_owned {
-            log_info!("[INJECT] Custom mod selected for owned skin {target_skin_id}, injecting custom mod only");
+            log_info!("[INJECT] Custom mod selected for owned/base skin {target_skin_id}, injecting custom mod only");
         } else {
             log_info!("[INJECT] Custom mod selected for unowned skin {target_skin_id}, injecting base skin ZIP + custom mod");
         }
@@ -493,7 +502,15 @@ async fn run_custom_mod_injection(
 
     let champion_id = if custom_mod.champion_id != 0 { Some(custom_mod.champion_id) } else { None };
 
-    if base_skin_name.is_some() {
+    // Force the champion's base skin via the LCU when the overlay's assets are
+    // keyed to it: the unowned path (base ZIP + mod), OR a real custom skin mod
+    // that targets the base skin itself (the user may have a different skin
+    // selected in champ select, so we must move them to base for the mod to
+    // show). Scoped to `has_custom_skin_folder` so the category-mods-only
+    // `dummy` selection (whose skin_id can be a base value) doesn't force a base
+    // skin when the user only added a map/font/announcer.
+    let target_is_base_custom_skin = has_custom_skin_folder && custom_mod.skin_id % 1000 == 0;
+    if base_skin_name.is_some() || target_is_base_custom_skin {
         if let (Some(cid), Some(auth)) = (champion_id, lcu::cached_auth()) {
             let client = lcu::build_client(lcu_ext::LCU_API_TIMEOUT_S);
             let (local_cell, random_active) = {
