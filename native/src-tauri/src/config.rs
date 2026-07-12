@@ -204,6 +204,23 @@ impl Default for ClientCustomization {
     }
 }
 
+/// Chat presence override — "Appear Offline" and friends. When `appear_offline`
+/// is on, Chud sets your League chat availability to `offline` and re-asserts it
+/// (the client resets availability on some gameflow events), so you stay hidden
+/// from your friends list while still playing. Off by default; toggling it off
+/// restores you to online. Pure LCU write, no Vanguard surface.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct Presence {
+    pub appear_offline: bool,
+}
+
+impl Default for Presence {
+    fn default() -> Self {
+        Self { appear_offline: false }
+    }
+}
+
 #[derive(Debug, Clone, Default, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Config {
@@ -215,6 +232,7 @@ pub struct Config {
     pub skins: SkinsCfg,
     pub runes: Runes,
     pub client: ClientCustomization,
+    pub presence: Presence,
 }
 
 /// Per-user config file path: `%APPDATA%/LeagueOfLegendsTools/config.json`.

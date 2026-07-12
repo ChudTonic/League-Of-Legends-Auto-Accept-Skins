@@ -830,6 +830,59 @@ fn spawn_runes_auto_import(state: Arc<AppState>) {
     });
 }
 
+/// Keep the chat presence in sync with the "Appear Offline" toggle. The League
+/// client resets `availability` back to `chat` on some gameflow events, so a
+/// one-shot write isn't enough — this re-asserts `offline` while the toggle is
+/// on, and restores `chat` once when it's turned off. Pure LCU write.
+fn spawn_appear_offline(state: Arc<AppState>) {
+    tauri::async_runtime::spawn(async move {
+        let http = lcu::build_client(6.0);
+        let mut was_enabled = false;
+        loop {
+            tokio::time::sleep(std::time::Duration::from_secs(3)).await;
+            let enabled = { state.config.lock_safe().presence.appear_offline };
+            let Some(auth) = lcu::cached_auth() else { continue }; // client down — nothing to assert
+            if enabled {
+                let current = lcu::get_json(&http, &auth, "/lol-chat/v1/me")
+                    .await
+                    .and_then(|v| v.get("availability").and_then(|a| a.as_str()).map(str::to_string));
+                if current.as_deref() != Some("offline") {
+                    let body = serde_json::json!({ "availability": "offline" });
+                    let _ = lcu::request_json(&http, &auth, reqwest::Method::PUT, "/lol-chat/v1/me", Some(&body)).await;
+                }
+                was_enabled = true;
+            } else if was_enabled {
+                let body = serde_json::json!({ "availability": "chat" });
+                let _ = lcu::request_json(&http, &auth, reqwest::Method::PUT, "/lol-chat/v1/me", Some(&body)).await;
+                was_enabled = false;
+            }
+        }
+    });
+}
+
+/// Toggle "Appear Offline". Persists the choice and applies it to the live
+/// client immediately (best-effort); `spawn_appear_offline` keeps re-asserting.
+#[tauri::command]
+async fn set_appear_offline(enabled: bool, state: tauri::State<'_, Arc<AppState>>) -> Result<bool, String> {
+    {
+        let mut c = state.config.lock_safe();
+        c.presence.appear_offline = enabled;
+        let _ = c.save();
+    }
+    if let Some(auth) = lcu::cached_auth() {
+        let http = lcu::build_client(6.0);
+        let body = serde_json::json!({ "availability": if enabled { "offline" } else { "chat" } });
+        let _ = lcu::request_json(&http, &auth, reqwest::Method::PUT, "/lol-chat/v1/me", Some(&body)).await;
+    }
+    Ok(enabled)
+}
+
+/// Read the current "Appear Offline" state (for UI hydration).
+#[tauri::command]
+fn get_appear_offline(state: tauri::State<Arc<AppState>>) -> bool {
+    state.config.lock_safe().presence.appear_offline
+}
+
 /// Import the current-patch best runes + summoner spells + item build for your
 /// locked champion into the live client, via the runes Worker + the local LCU.
 /// Manual trigger for an "Import build" button; the (future) auto-import on
@@ -1051,6 +1104,8 @@ pub fn run() {
             skins_party_add_peer,
             skins_party_get_state,
             runes_import_now,
+            set_appear_offline,
+            get_appear_offline,
             updater_check,
             updater_install
         ])
@@ -1069,6 +1124,7 @@ pub fn run() {
             // Rune/build auto-import watcher (inert until enabled + a Worker
             // endpoint is configured).
             spawn_runes_auto_import(st.clone());
+            spawn_appear_offline(st.clone());
 
             // Auto-update: on startup, silently check GitHub Releases for a
             // signed newer version, install it, and relaunch. This is what lets

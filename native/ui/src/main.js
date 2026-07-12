@@ -190,6 +190,7 @@ const DEFAULT_CONFIG = {
   safety: { block_in_ranked: true, injection_ack: false },
 };
 let cfg = null;
+let appearOffline = false;
 async function loadConfig() { cfg = (await invoke("get_config")) || structuredClone(DEFAULT_CONFIG); }
 const cval = (s, k) => (cfg[s] && cfg[s][k] !== undefined ? cfg[s][k] : "");
 
@@ -229,11 +230,15 @@ function settingsHtml() {
     setField("Build source", "Highest win-rate or most popular", segMode("runes", "sort", ["winrate", "popular"])),
     setField("Import now", "Pull the build for your currently-picked champion", `<button class="btn ghost sm" id="runesImportNow">Import build</button>`),
   ].join(""))}
+  ${card("Presence", "profile", [
+    setField("Appear offline", "Hide from your friends list while you play. Chud sets your chat status to offline and keeps re-asserting it (the client otherwise resets it). Applies instantly.", `<div class="tog ${appearOffline ? "on" : ""}" id="appearOfflineTog"><div class="knob"></div></div>`),
+  ].join(""))}
   <div class="row"><button class="btn primary" id="saveCfg">Save settings</button><span class="dim mono" id="saveHint" style="font-size:11.5px"></span></div>
   </div>`;
 }
 async function renderSettings() {
   if (!cfg) await loadConfig();
+  try { appearOffline = !!(await invoke("get_appear_offline")); } catch { /* keep last */ }
   const p = document.getElementById("page");
   p.innerHTML = settingsHtml();
   p.querySelectorAll("input").forEach((el) => (el.onchange = () => {
@@ -259,6 +264,13 @@ async function renderSettings() {
     await invoke("save_config", { cfg });
     const h = document.getElementById("saveHint"); if (h) { h.textContent = "Saved ✓"; setTimeout(() => { if (h) h.textContent = ""; }, 1800); }
     toast("Settings saved", "Configuration written to disk.", "success");
+  };
+  const aoTog = document.getElementById("appearOfflineTog");
+  if (aoTog) aoTog.onclick = async () => {
+    appearOffline = !appearOffline;
+    aoTog.classList.toggle("on", appearOffline);
+    try { await invoke("set_appear_offline", { enabled: appearOffline }); } catch { /* client may be down; watcher applies when it's up */ }
+    toast(appearOffline ? "Appearing offline" : "Back online", appearOffline ? "You're hidden from your friends list while you play." : "Your friends can see you again.", appearOffline ? "success" : "neutral");
   };
   const importBtn = document.getElementById("runesImportNow");
   if (importBtn) importBtn.onclick = async () => {
