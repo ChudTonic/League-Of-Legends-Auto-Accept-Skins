@@ -517,12 +517,19 @@ function skinsPartyCard() {
 
 // ── Favorite skins ────────────────────────────────────────────────────────────
 async function loadFavoritesData() {
+  // Load the two independently — a failure in one must not blank the other.
   try {
-    const [cat, favs] = await Promise.all([invoke("skins_catalog"), invoke("skins_get_favorites")]);
+    const cat = await invoke("skins_catalog");
     skinsCatalog = (cat && cat.champions) || [];
-    skinsFavorites = favs || {};
-  } catch {
-    skinsCatalog = skinsCatalog || [];
+  } catch (e) {
+    console.error("skins_catalog failed", e);
+    skinsCatalog = [];
+  }
+  try {
+    skinsFavorites = (await invoke("skins_get_favorites")) || {};
+  } catch (e) {
+    console.error("skins_get_favorites failed", e);
+    skinsFavorites = {};
   }
 }
 

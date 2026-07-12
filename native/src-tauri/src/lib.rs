@@ -682,10 +682,15 @@ fn skins_set_enabled(enabled: bool, state: tauri::State<Arc<AppState>>) -> serde
 }
 
 /// The browsable skin catalog (every champ + its skins, flagged downloaded)
-/// for the favorites picker UI.
+/// for the favorites picker UI. Takes `_state` purely so it matches the shape
+/// of every other registered command — a zero-argument sync command did not
+/// register through `generate_handler!` (it was silently dropped from the
+/// command table, so `invoke("skins_catalog")` rejected as "not found").
 #[tauri::command]
-fn skins_catalog() -> serde_json::Value {
-    json!({ "champions": skins::favorites::catalog(None) })
+fn skins_catalog(_state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let champions = skins::favorites::catalog(None);
+    skins::slog::log(skins::slog::Level::Info, &format!("[FAVORITES] catalog requested — {} champions", champions.len()));
+    json!({ "champions": champions })
 }
 
 /// The current `champ_id -> favorite skin_id` map, as string-keyed JSON.
