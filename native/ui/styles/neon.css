@@ -541,3 +541,18 @@ body.no-motion *, body.no-motion *::before, body.no-motion *::after { animation:
 .fav-skin.undl:hover { background: transparent; color: var(--text-secondary); }
 .fav-dot { width: 12px; color: var(--magenta-soft); font-size: 11px; }
 .fav-sname { flex: 0 1 auto; }
+
+/* Favorite skins — champ icons + skin thumbnails */
+.fav-cicon {
+  width: 22px; height: 22px; border-radius: 50%; flex: 0 0 auto;
+  object-fit: cover; background: var(--bg-inset);
+  border: 1px solid var(--line-soft);
+}
+.fav-cicon.broken { visibility: hidden; }
+.fav-thumb {
+  width: 46px; height: 27px; flex: 0 0 auto; border-radius: 4px;
+  object-fit: cover; background: var(--bg-inset);
+  border: 1px solid var(--line-soft);
+}
+.fav-thumb.broken { visibility: hidden; }
+.fav-skin { align-items: center; }

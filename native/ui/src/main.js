@@ -538,6 +538,10 @@ function favSkinNameFor(champId, skinId) {
   const s = c && c.skins.find((k) => k.skin_id === skinId);
   return s ? s.name : `Skin ${skinId}`;
 }
+// CommunityDragon art (CSP is null in this app, so remote images load fine).
+// Champ square icon = champ id; skin tile = champ id + skin number (skinId % 1000).
+const champIconUrl = (champId) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-icons/${champId}.png`;
+const skinTileUrl = (skinId) => `https://cdn.communitydragon.org/latest/champion/${Math.floor(skinId / 1000)}/tile/skin/${skinId % 1000}`;
 
 function skinsFavoritesCardInner() {
   const title = `<div class="set-card-title"><span class="ci">${ico("skin")}</span>Favorite Skins</div>
@@ -559,11 +563,14 @@ function skinsFavoritesCardInner() {
     const caret = expanded ? "▾" : "▸";
     let sub = "";
     if (expanded) {
+      // Skin thumbnails only render here — in the expanded per-champ list —
+      // so the champ list itself stays light (no hundreds of images at once).
       const skinRows = c.skins.map((s) => {
         const isFav = favId === s.skin_id;
         const cls = `fav-skin${isFav ? " on" : ""}${s.downloaded ? "" : " undl"}`;
         const note = s.downloaded ? "" : `<span class="dim" style="font-size:10.5px;margin-left:auto">not downloaded</span>`;
         return `<div class="${cls}" data-fav-champ="${c.champ_id}" data-fav-skin="${s.skin_id}" data-dl="${s.downloaded ? 1 : 0}">
+          <img class="fav-thumb" loading="lazy" src="${skinTileUrl(s.skin_id)}" alt="" onerror="this.classList.add('broken')">
           <span class="fav-dot">${isFav ? "●" : "○"}</span><span class="fav-sname">${esc(s.name)}</span>${note}</div>`;
       }).join("");
       sub = `<div class="fav-skinlist">${skinRows}</div>`;
@@ -571,6 +578,7 @@ function skinsFavoritesCardInner() {
     return `<div class="fav-champ">
       <div class="fav-champ-head" data-fav-toggle="${c.champ_id}">
         <span class="fav-caret">${caret}</span>
+        <img class="fav-cicon" loading="lazy" src="${champIconUrl(c.champ_id)}" alt="" onerror="this.classList.add('broken')">
         <span class="fav-cname">${esc(c.champ_name)}</span>
         <span class="fav-cbadge">${badge}</span>
         ${favId != null ? `<button class="btn sm ghost fav-clear" data-fav-clear="${c.champ_id}">Clear</button>` : ""}
@@ -635,6 +643,10 @@ async function renderSkins() {
     p.innerHTML = `<div class="glass"><div class="muted">Loading skins state…</div></div>`;
     await loadSkinsState();
   }
+  // Load the favorites catalog BEFORE first paint (same as skinsState above), so
+  // the champ list renders populated and A-Z on the first frame — no lazy
+  // rerender race that could leave the default (unsearched) view blank.
+  if (skinsCatalog === null) await loadFavoritesData();
   if (currentPage !== "skins") return; // navigated away while the await above was in flight
   p.innerHTML = `<div class="set-wrap">
     ${skinsAck ? "" : skinsRiskStrip()}
@@ -653,8 +665,6 @@ async function renderSkins() {
   wireSkins();
   wireFavorites();
   startSkinsPoll();
-  // Lazy-load the favorites catalog once, then refresh just that card.
-  if (skinsCatalog === null) loadFavoritesData().then(() => { if (currentPage === "skins") rerenderFavCard(); });
 }
 
 function wireSkins() {
