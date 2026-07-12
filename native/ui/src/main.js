@@ -718,10 +718,13 @@ function clientCustomCardInner() {
   const sub = cc.enabled
     ? CC_OPTS.map(([k, label, hint]) => setField(label, hint, `<div class="tog ${cc[k] ? "on" : ""}" data-cc="${k}"><div class="knob"></div></div>`)).join("")
     : `<div class="dim" style="padding:6px 2px;font-size:12px">Turn on to choose what to hide.</div>`;
-  return `<div class="set-card-title"><span class="ci">${ico("settings")}</span>Client Declutter</div>
-    <div class="dim" style="font-size:12px;margin:-4px 0 10px">Hide the League client's promos, store pushes, battle-pass and event clutter. Applies live — needs Pengu Loader active.</div>
+  return `<div class="set-card-title"><span class="ci">${ico("settings")}</span>Client Extras</div>
+    <div class="dim" style="font-size:12px;margin:-4px 0 10px">Client-side tweaks — apply live in the League client (needs Pengu Loader active).</div>
     <div class="set-list">
-      ${setField("Enable declutter", "Master switch for all the toggles below", `<div class="tog ${cc.enabled ? "on" : ""}" data-cc="enabled"><div class="knob"></div></div>`)}
+      ${setField("Queue Arena minigame", "Play a skillshot-dodge game in the client while you search for a match", `<div class="tog ${cc.queue_arena !== false ? "on" : ""}" data-cc="queue_arena"><div class="knob"></div></div>`)}
+    </div>
+    <div class="set-list" style="margin-top:12px;padding-top:12px;border-top:1px solid rgba(255,255,255,0.08)">
+      ${setField("Enable declutter", "Master switch — hide promos, store pushes, battle-pass & event clutter", `<div class="tog ${cc.enabled ? "on" : ""}" data-cc="enabled"><div class="knob"></div></div>`)}
       ${sub}
     </div>`;
 }

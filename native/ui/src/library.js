@@ -44,7 +44,8 @@
   // ── browser-preview mocks (same pattern as MOCK_STATE / MOCK_PROFILE) ──
   // Raw worker shape (pre-adapt). Thumbs borrow official tiles from
   // CommunityDragon purely as stand-in art for the no-backend preview.
-  const TILE = (c, n) => `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/v1/champion-tiles/${c}/${c * 1000 + n}.jpg`;
+  const MOCK_ALIAS = { 103: "ahri", 157: "yasuo", 222: "jinx", 99: "lux", 238: "zed", 84: "akali", 147: "seraphine", 67: "vayne", 412: "thresh", 81: "ezreal", 875: "sett", 55: "katarina" };
+  const TILE = (c, n) => { const a = MOCK_ALIAS[c]; return `https://raw.communitydragon.org/latest/plugins/rcp-be-lol-game-data/global/default/assets/characters/${a}/skins/skin${String(n).padStart(2, "0")}/images/${a}_splash_tile_${n}.jpg`; };
   const MOCK_MODS = [
     { id: "mock-starfall-ahri", name: "Starfall Ahri", author: "Mochi", champions: [{ id: 103, name: "Ahri" }], category: "champion_skin", themes: ["anime"], views: 48200, installs: 12400, likes: 3100, updatedAt: "2026-07-10T12:00:00Z", trending: true, working: true, ready: true, thumb: TILE(103, 1), description: "Celestial recolor with new trail VFX." },
     { id: "mock-cyber-yasuo", name: "Cyber Yasuo 2077", author: "NightOwl", champions: [{ id: 157, name: "Yasuo" }], category: "champion_skin", themes: ["scifi"], views: 39100, installs: 9800, likes: 2400, updatedAt: "2026-07-08T12:00:00Z", trending: true, working: true, ready: true, thumb: TILE(157, 2), description: "Neon-city blade with holo wind wall." },
@@ -71,7 +72,7 @@
   ];
   const MOCK_BUNDLES = [
     { champ: "Ahri", champId: 103, skins: [{ id: "mock-starfall-ahri", name: "Starfall Ahri", thumb: TILE(103, 1), ready: true }, { id: "mock-b-ahri-2", name: "Midnight Spirit", thumb: TILE(103, 2), ready: true }, { id: "mock-b-ahri-3", name: "Nine Lives", thumb: TILE(103, 3), ready: true }, { id: "mock-b-ahri-4", name: "Foxfire Redux", thumb: TILE(103, 4), ready: true }] },
-    { champ: "Yasuo", champId: 157, skins: [{ id: "mock-cyber-yasuo", name: "Cyber Yasuo 2077", thumb: TILE(157, 2), ready: true }, { id: "mock-b-yasuo-2", name: "Ronin Wanderer", thumb: TILE(157, 1), ready: true }, { id: "mock-b-yasuo-3", name: "Stormblade", thumb: TILE(157, 3), ready: true }, { id: "mock-b-yasuo-4", name: "Last Breath", thumb: TILE(157, 4), ready: true }] },
+    { champ: "Yasuo", champId: 157, skins: [{ id: "mock-cyber-yasuo", name: "Cyber Yasuo 2077", thumb: TILE(157, 2), ready: true }, { id: "mock-b-yasuo-2", name: "Ronin Wanderer", thumb: TILE(157, 1), ready: true }, { id: "mock-b-yasuo-3", name: "Stormblade", thumb: TILE(157, 3), ready: true }, { id: "mock-b-yasuo-4", name: "Last Breath", thumb: TILE(157, 9), ready: true }] },
     { champ: "Jinx", champId: 222, skins: [{ id: "mock-bubblegum-jinx", name: "Bubblegum Jinx", thumb: TILE(222, 1), ready: true }, { id: "mock-b-jinx-2", name: "Powder Keg", thumb: TILE(222, 2), ready: true }, { id: "mock-b-jinx-3", name: "Get Jinxed", thumb: TILE(222, 3), ready: true }, { id: "mock-b-jinx-4", name: "Zap Happy", thumb: TILE(222, 4), ready: true }] },
     { champ: "Lux", champId: 99, skins: [{ id: "mock-sailor-lux", name: "Sailor Lux", thumb: TILE(99, 2), ready: true }, { id: "mock-b-lux-2", name: "Prism Guard", thumb: TILE(99, 1), ready: true }, { id: "mock-b-lux-3", name: "Final Spark", thumb: TILE(99, 3), ready: true }, { id: "mock-b-lux-4", name: "Lady of Light", thumb: TILE(99, 4), ready: true }] },
   ];

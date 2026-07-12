@@ -156,6 +156,9 @@ pub struct ClientCustomization {
     /// Notification DND — hide attention-nag pips/badges (activity-center dot,
     /// call-to-action pips, Clash pip, loyalty/rewards badge, nav "new" badges).
     pub hide_notif_badges: bool,
+    /// Queue Arena — show the in-client skillshot-dodge minigame while searching
+    /// for a match. Independent of the declutter `enabled` master switch.
+    pub queue_arena: bool,
 }
 
 impl Default for ClientCustomization {
@@ -172,6 +175,7 @@ impl Default for ClientCustomization {
             hide_event_timers: false,
             hide_home_video: false,
             hide_notif_badges: false,
+            queue_arena: true,
         }
     }
 }
