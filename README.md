@@ -51,9 +51,8 @@ Pick any skin (or chroma) for any champion, right inside the League client. Chud
 |------|--------------|
 | **Auto-Accept** | Watches the client and accepts ready checks the instant they pop — never miss a queue again. |
 | **Auto-Range** | Holds the *Show Advanced Player Stats* key during a match so range indicators stay on screen. |
-| **Camera Assist** *(experimental)* | Spots your champion on screen and recenters the camera when you drift. |
 
-![Chud dashboard — Auto-Accept armed, Auto-Range and Camera Assist ready](docs/screenshot-dashboard.png)
+![Chud dashboard — Auto-Accept armed and Auto-Range ready](docs/screenshot-dashboard.png)
 
 ### 📊 Live profile
 
@@ -81,7 +80,7 @@ Also built on the shoulders of:
 
 ## ⚠️ Please read before using — this can get you banned
 
-Chud changes skins by **injecting into the game**, and Auto-Range / Camera Assist **synthesize keyboard input and read the screen**. **Riot's Vanguard anti-cheat can detect all of this and ban your account.** This is a real risk that comes with any skin changer or input tool for League.
+Chud changes skins by **injecting into the game**, and Auto-Range **synthesizes keyboard input**. **Riot's Vanguard anti-cheat can detect all of this and ban your account.** This is a real risk that comes with any skin changer or input tool for League.
 
 Chud operates **openly** — there is no anti-cheat evasion, and none will ever be added.
 
@@ -120,7 +119,7 @@ native/
     icons/     ← app icons
   src-tauri/resources/pengu-loader/plugins/CHUD-*   ← in-client menus (run inside the League client)
 relay-worker/  ← Cloudflare Worker (Durable Object) that relays party skin-sync
-docs/          ← screenshots + design notes
+docs/          ← screenshots
 ```
 
 ## 💬 Community

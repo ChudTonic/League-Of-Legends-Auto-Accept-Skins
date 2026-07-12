@@ -33,9 +33,7 @@ base64 = "0.22"
 directories = "5"
 # Auto-Range injection (M2) — direct Win32 SendInput in input.rs
 rdev = "0.5"                       # global key listener for chat-aware release
-xcap = "0.9.6"
-image = "0.25.6"
-ndarray = "0.17.2"
+image = "0.25.6"                    # decode the bundled tray icon
 # Skins subsystem (S1+) — injection pipeline, Pengu bridge, party mode.
 zip = "2"
 flate2 = "1"
