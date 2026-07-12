@@ -928,6 +928,99 @@ async fn library_catalog(
     resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
 }
 
+/// Downloaded Library mods live here (large `.fantome` files, alongside the
+/// skin downloads). The install *record* is in the config (survives updates).
+fn library_mods_dir() -> std::path::PathBuf {
+    skins::paths::data_root().join("library")
+}
+
+/// The full catalog in one shot (the Library page filters it client-side).
+#[tauri::command]
+async fn library_catalog_all(state: tauri::State<'_, Arc<AppState>>) -> Result<serde_json::Value, String> {
+    let endpoint = { state.config.lock_safe().library.endpoint.clone() };
+    let http = lcu::build_client(20.0);
+    let resp = http.get(format!("{}/all", endpoint.trim_end_matches('/'))).send().await.map_err(|e| e.to_string())?;
+    resp.json::<serde_json::Value>().await.map_err(|e| e.to_string())
+}
+
+/// Installed mods + favorites + auto-update flag (for UI hydration).
+#[tauri::command]
+fn library_state(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let c = state.config.lock_safe();
+    json!({ "installed": c.library.installed, "favs": c.library.favs, "autoUpdate": c.library.auto_update })
+}
+
+/// Toggle a favorite mod; returns the updated fav list.
+#[tauri::command]
+fn library_set_favorite(mod_id: String, on: bool, state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let mut c = state.config.lock_safe();
+    c.library.favs.retain(|f| f != &mod_id);
+    if on { c.library.favs.push(mod_id); }
+    let _ = c.save();
+    json!(c.library.favs)
+}
+
+#[tauri::command]
+fn library_set_auto_update(on: bool, state: tauri::State<Arc<AppState>>) -> bool {
+    let mut c = state.config.lock_safe();
+    c.library.auto_update = on;
+    let _ = c.save();
+    on
+}
+
+/// Install a mod: resolve its download from the Worker (served from our R2),
+/// save the `.fantome` into the library mods dir, and record it. The record
+/// persists; the file lives with the skin downloads.
+#[tauri::command]
+async fn library_install(
+    mod_id: String,
+    name: String,
+    champ: String,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<serde_json::Value, String> {
+    let endpoint = { state.config.lock_safe().library.endpoint.clone() };
+    let base = endpoint.trim_end_matches('/');
+    let http = lcu::build_client(180.0);
+    let dl = http
+        .get(format!("{base}/download/{mod_id}"))
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .json::<serde_json::Value>()
+        .await
+        .map_err(|e| e.to_string())?;
+    let url = dl.get("url").and_then(|v| v.as_str()).ok_or("could not resolve download")?.to_string();
+    let bytes = http.get(&url).send().await.map_err(|e| e.to_string())?.bytes().await.map_err(|e| e.to_string())?;
+    let dir = library_mods_dir();
+    tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
+    let file = format!("{mod_id}.fantome");
+    tokio::fs::write(dir.join(&file), &bytes).await.map_err(|e| e.to_string())?;
+    let rec = config::InstalledMod {
+        name,
+        champ,
+        version: "1.0.0".into(),
+        size_mb: (bytes.len() as f64) / 1_048_576.0,
+        file,
+    };
+    {
+        let mut c = state.config.lock_safe();
+        c.library.installed.insert(mod_id, rec.clone());
+        let _ = c.save();
+    }
+    Ok(serde_json::to_value(rec).unwrap_or_else(|_| json!({})))
+}
+
+/// Remove an installed mod (delete the file + forget the record).
+#[tauri::command]
+fn library_remove(mod_id: String, state: tauri::State<Arc<AppState>>) -> serde_json::Value {
+    let mut c = state.config.lock_safe();
+    if let Some(rec) = c.library.installed.remove(&mod_id) {
+        let _ = std::fs::remove_file(library_mods_dir().join(&rec.file));
+    }
+    let _ = c.save();
+    json!({ "installed": c.library.installed })
+}
+
 /// Import the current-patch best runes + summoner spells + item build for your
 /// locked champion into the live client, via the runes Worker + the local LCU.
 /// Manual trigger for an "Import build" button; the (future) auto-import on
@@ -1154,6 +1247,12 @@ pub fn run() {
             library_get,
             set_library_enabled,
             library_catalog,
+            library_catalog_all,
+            library_state,
+            library_set_favorite,
+            library_set_auto_update,
+            library_install,
+            library_remove,
             updater_check,
             updater_install
         ])

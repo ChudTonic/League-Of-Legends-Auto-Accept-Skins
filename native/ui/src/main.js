@@ -54,7 +54,7 @@ const TONE = { success: "#33e0a0", running: "#33e0a0", ice: "#35e4ff", info: "#3
 const toneColor = (t) => TONE[t] || TONE.neutral;
 
 // ── Glyphs (inline SVG so they inherit currentColor) ────────────────────────
-const GLYPH_NAMES = ["dashboard", "profile", "settings", "activity", "diagnostics", "power", "bolt", "crosshair", "camera", "lock", "warning", "ping", "refresh", "copy", "chevron", "shield", "skin"];
+const GLYPH_NAMES = ["dashboard", "profile", "settings", "activity", "diagnostics", "power", "bolt", "crosshair", "camera", "lock", "warning", "ping", "refresh", "copy", "chevron", "shield", "skin", "library"];
 const GLYPHS = {};
 async function loadGlyphs() {
   await Promise.all(GLYPH_NAMES.map(async (n) => {
@@ -82,7 +82,7 @@ async function loadLibraryState() {
 }
 function navItems() {
   const items = NAV.slice();
-  if (libraryEnabled) items.splice(3, 0, { page: "library", label: "Skin Library", glyph: "skin" });
+  if (libraryEnabled) items.splice(2, 0, { page: "library", label: "Library", glyph: "library" });
   return items;
 }
 
@@ -964,70 +964,6 @@ function syncReadyCheck() {
   }
 }
 
-// ── Skin Library (BETA) ──────────────────────────────────────────────────────
-// Upstream source credited at runtime (decoded) so the public repo doesn't
-// carry the source site's domain in plaintext — a request from them.
-const LIB_SRC = (() => { try { return atob("cnVuZWZvcmdlLmRldg=="); } catch { return ""; } })();
-let librarySearch = "";
-let libraryPage = 0;
-let libraryData = null;
-let libraryLoading = false;
-
-async function fetchLibrary() {
-  libraryLoading = true; renderLibraryInner();
-  try { libraryData = await invoke("library_catalog", { search: librarySearch, page: libraryPage }); }
-  catch (e) { libraryData = { error: String(e), mods: [], total: 0 }; }
-  libraryLoading = false; renderLibraryInner();
-}
-
-function libraryCardHtml(m) {
-  // Clamp the champion list — some mods replace every champion, which would
-  // blow the card height out otherwise.
-  const chArr = (m.champions || []).map((c) => c.name);
-  const champs = chArr.length > 3 ? `${chArr.slice(0, 3).join(", ")} +${chArr.length - 3} more` : chArr.join(", ");
-  const ready = m.ready ? `<span class="lib-ready" title="Ready to install instantly from Chud">⚡</span>` : "";
-  return `<div class="lib-card">
-    <div class="lib-thumb-wrap">${m.thumb ? `<img class="lib-thumb" loading="lazy" src="${esc(m.thumb)}" alt="" onerror="this.classList.add('broken')">` : ""}${ready}</div>
-    <div class="lib-body">
-      <div class="lib-name" title="${esc(m.name)}">${esc(m.name)}</div>
-      <div class="lib-meta">${esc(champs)}${m.publisher ? ` · by <b>${esc(m.publisher)}</b>` : ""}</div>
-    </div>
-    <button class="btn sm ghost lib-install" data-mod="${esc(m.id)}" disabled title="One-click install is coming soon">Install (soon)</button>
-  </div>`;
-}
-
-function renderLibraryInner() {
-  const el = document.getElementById("libGrid");
-  if (!el) return;
-  if (libraryLoading && !libraryData) { el.innerHTML = `<div class="dim" style="padding:16px">Loading skins…</div>`; return; }
-  const d = libraryData || {};
-  if (d.error) { el.innerHTML = `<div class="dim" style="padding:16px">Couldn't reach the library right now. (${esc(d.error)})</div>`; return; }
-  const mods = d.mods || [], total = d.total || 0, pageSize = d.pageSize || 48;
-  const pages = Math.max(1, Math.ceil(total / pageSize));
-  el.innerHTML = `
-    <div class="lib-count dim">${total.toLocaleString()} skin${total === 1 ? "" : "s"}${librarySearch ? ` matching “${esc(librarySearch)}”` : ""}${d.readyCount != null ? ` · ⚡ ${d.readyCount.toLocaleString()} instant` : ""} · page ${libraryPage + 1}/${pages}</div>
-    <div class="lib-grid">${mods.map(libraryCardHtml).join("") || `<div class="dim" style="padding:16px">No skins found.</div>`}</div>
-    <div class="row" style="justify-content:center;gap:10px;margin-top:14px">
-      <button class="btn sm" id="libPrev" ${libraryPage <= 0 ? "disabled" : ""}>← Prev</button>
-      <button class="btn sm" id="libNext" ${libraryPage >= pages - 1 ? "disabled" : ""}>Next →</button>
-    </div>`;
-  const prev = document.getElementById("libPrev"); if (prev) prev.onclick = () => { if (libraryPage > 0) { libraryPage--; fetchLibrary(); } };
-  const next = document.getElementById("libNext"); if (next) next.onclick = () => { libraryPage++; fetchLibrary(); };
-}
-
-function renderLibrary() {
-  const p = document.getElementById("page");
-  p.innerHTML = `<div class="set-wrap"><div class="glass">
-    <div class="set-card-title"><span class="ci">${ico("skin")}</span>Skin Library <span class="beta-pill">BETA</span></div>
-    <div class="dim" style="font-size:12px;margin:-2px 0 12px">Browse community skins and (soon) install them in one click. Credit to each mod's author${LIB_SRC ? `, catalog via ${esc(LIB_SRC)}` : ""}.</div>
-    <span class="set-input-wrap" style="width:100%;margin-bottom:10px"><input class="set-input" id="libSearch" type="text" style="width:100%;text-align:left" placeholder="Search skins or champions…" value="${esc(librarySearch)}"></span>
-    <div id="libGrid"></div>
-  </div></div>`;
-  const s = document.getElementById("libSearch");
-  if (s) { let t = null; s.oninput = () => { clearTimeout(t); t = setTimeout(() => { librarySearch = s.value; libraryPage = 0; fetchLibrary(); }, 350); }; }
-  fetchLibrary();
-}
-
 // ── Page routing + actions ───────────────────────────────────────────────────
 function renderPage() {
   const page = document.getElementById("page");
@@ -1035,11 +971,12 @@ function renderPage() {
   else if (currentPage === "settings") { renderSettings(); }
   else if (currentPage === "profile") { window.renderProfile?.(page); }
   else if (currentPage === "skins") { renderSkins(); }
-  else if (currentPage === "library") { renderLibrary(); }
+  else if (currentPage === "library") { window.renderLibrary?.(page); }
   else if (currentPage === "activity") { renderActivity(); }
   else if (currentPage === "diagnostics") { renderDiagnostics(); }
   else { page.innerHTML = `<div class="glass"><div class="muted">${esc(NAV.find((n) => n.page === currentPage)?.label || "")} — coming soon.</div></div>`; }
 }
+window.ChudNavTo = (p) => navTo(p);
 function navTo(page) {
   if (currentPage === "skins" && page !== "skins") stopSkinsPoll();
   currentPage = page; renderNav(); renderTop(); renderPage();

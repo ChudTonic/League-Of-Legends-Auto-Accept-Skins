@@ -225,16 +225,47 @@ impl Default for Presence {
 /// served through Chud's `chud-skins` Cloudflare Worker. Hidden behind a beta
 /// toggle (`enabled`, default off) until the feature is finished, so it only
 /// shows for people who opt in from Settings.
+/// A mod the user has installed via the Library (persisted so it survives
+/// restarts, like favorites — kept in the config dir, not the install dir).
+#[derive(Debug, Clone, Serialize, Deserialize)]
+#[serde(default)]
+pub struct InstalledMod {
+    pub name: String,
+    pub champ: String,
+    pub version: String,
+    pub size_mb: f64,
+    /// Relative filename in the library mods dir.
+    pub file: String,
+}
+
+impl Default for InstalledMod {
+    fn default() -> Self {
+        Self { name: String::new(), champ: String::new(), version: "1.0.0".into(), size_mb: 0.0, file: String::new() }
+    }
+}
+
 #[derive(Debug, Clone, Serialize, Deserialize)]
 #[serde(default)]
 pub struct Library {
     pub enabled: bool,
     pub endpoint: String,
+    /// mod_id -> installed record.
+    pub installed: std::collections::HashMap<String, InstalledMod>,
+    /// favorited mod_ids.
+    pub favs: Vec<String>,
+    /// check for mod updates on launch.
+    pub auto_update: bool,
 }
 
 impl Default for Library {
     fn default() -> Self {
-        Self { enabled: false, endpoint: "https://chud-skins.jivy26.workers.dev".into() }
+        Self {
+            enabled: false,
+            endpoint: "https://chud-skins.jivy26.workers.dev".into(),
+            installed: std::collections::HashMap::new(),
+            favs: Vec::new(),
+            auto_update: true,
+        }
     }
 }
 
