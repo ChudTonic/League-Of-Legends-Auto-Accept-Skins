@@ -50,13 +50,16 @@ function normalize(m) {
   };
 }
 
+// Returns { mods } on a successful 2xx response, or { error: status } on a
+// non-2xx upstream response — callers must NOT treat an error the same as a
+// genuine end-of-catalog (a short/empty 200 page).
 async function fetchPage(page) {
   // Omit categories/champions[] params (the API 400s on empty-array strings).
   const u = `${RF}/api/mods?page=${page}&pageSize=${PAGE_SIZE}&sortBy=recently_updated`;
   const r = await fetch(u, { headers: { "User-Agent": UA } });
-  if (!r.ok) return null;
+  if (!r.ok) return { error: r.status };
   const d = await r.json();
-  return (d && d.mods) || [];
+  return { mods: (d && d.mods) || [] };
 }
 
 function today() {
@@ -74,8 +77,15 @@ async function crawlSpurt(env) {
   let reachedEnd = false;
   for (let i = 0; i < CHUNK_PAGES; i++) {
     const page = state.nextPage + i;
-    const mods = await fetchPage(page);
-    if (mods === null) { reachedEnd = true; state.lastPage = page - 1; break; }
+    const res = await fetchPage(page);
+    if (res.error) {
+      // Transient upstream failure (429/500/etc) — NOT the end of the catalog.
+      // Leave state untouched (nextPage/done unchanged) so this same chunk is
+      // retried on the next cron tick instead of truncating the catalog.
+      console.error(`crawlSpurt: upstream error ${res.error} at page ${page}, will retry`);
+      return { error: res.error, page, day };
+    }
+    const mods = res.mods;
     await env.CATALOG.put(`pg:${page}`, JSON.stringify(mods.map(normalize)));
     if (mods.length < PAGE_SIZE) { reachedEnd = true; state.lastPage = page; break; }
   }
@@ -95,6 +105,7 @@ async function crawlSpurt(env) {
   await env.CATALOG.put("meta:v1", JSON.stringify({ count: all.length, crawledAt: new Date().toISOString() }));
   state.done = true;
   await env.CATALOG.put("crawl:state", JSON.stringify(state));
+  console.log(`crawlSpurt: catalog assembled, ${all.length} mods across ${state.lastPage + 1} pages`);
   return { assembled: all.length, day };
 }
 
@@ -102,15 +113,16 @@ async function crawlSpurt(env) {
 async function crawlFull(env) {
   const all = [];
   for (let page = 0; page < 80; page++) {
-    const mods = await fetchPage(page);
-    if (mods === null) break;
-    all.push(...mods.map(normalize));
-    if (mods.length < PAGE_SIZE) break;
+    const res = await fetchPage(page);
+    if (res.error) { console.error(`crawlFull: upstream error ${res.error} at page ${page}, stopping`); break; }
+    all.push(...res.mods.map(normalize));
+    if (res.mods.length < PAGE_SIZE) break;
   }
   if (all.length) {
     await env.CATALOG.put("catalog:v1", JSON.stringify(all));
     await env.CATALOG.put("meta:v1", JSON.stringify({ count: all.length, crawledAt: new Date().toISOString() }));
     await env.CATALOG.put("crawl:state", JSON.stringify({ day: today(), nextPage: 0, done: true, lastPage: null }));
+    console.log(`crawlFull: catalog assembled, ${all.length} mods`);
   }
   return all.length;
 }
@@ -282,7 +294,7 @@ export default {
         const body = await r.text();
         let fp = null, fperr = null;
         try { fp = (await fetchPage(0)); } catch (e) { fperr = String(e); }
-        return json({ url: u, status: r.status, ct: r.headers.get("content-type"), bodyLen: body.length, bodyHead: body.slice(0, 200), fetchPageLen: fp ? fp.length : fp, fetchPageErr: fperr });
+        return json({ url: u, status: r.status, ct: r.headers.get("content-type"), bodyLen: body.length, bodyHead: body.slice(0, 200), fetchPageLen: fp && fp.mods ? fp.mods.length : null, fetchPageUpstreamError: fp ? fp.error || null : null, fetchPageErr: fperr });
       } catch (e) {
         return json({ error: String(e) });
       }
