@@ -164,7 +164,7 @@
   })();
 
   // ---- phase-driven show/hide ----
-  let lastPhase = " ";
+  let lastPhase = "__init__";
   async function tick() {
     const phase = await fetchPhase();
     if (phase !== lastPhase) { lastPhase = phase; report("phase", { phase, enabled }); }
