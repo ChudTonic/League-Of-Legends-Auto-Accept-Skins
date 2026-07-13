@@ -14,12 +14,16 @@
 //!
 //! Per-entry rule (path-hash = xxh64 of the lowercased path):
 //!   KEEP  brand-new hashes (files the game doesn't have), and entries that
-//!         live in the mod's champion WAD FAMILY (`X.wad.client` +
-//!         `X.<locale>.wad.client` — custom VO lands in the language WAD)
-//!         and ≤ `MAX_FAMILY_WADS` WADs total (champion content duplicated
-//!         into event twins like Strawberry_X / Ruby_X)
-//!   DROP  everything else — truly shared assets the game already has.
-//!         A single-champion skin never intends a global override.
+//!         exist in ≤ `MAX_ENTRY_WADS` game WADs — those merge into a
+//!         handful of WADs at most, which is cheap and almost certainly
+//!         intentional content (the champion's own WAD, its
+//!         `X.<locale>.wad.client` VO sibling, event twins like
+//!         Strawberry_X, or ANOTHER champion in a multi-champion pack —
+//!         learned the hard way: an "Ahri" pack legitimately carried Akali
+//!         files living in exactly 1 WAD; any ownership/family test wrongly
+//!         strips that content)
+//!   DROP  only entries present in many WADs — truly shared assets the game
+//!         already has everywhere. A skin never intends a global override.
 //!
 //! Sweeps run on a blocking thread at app startup and on every ChampSelect
 //! entry (minutes before the loadout injection needs the file), tracked in
@@ -42,12 +46,15 @@ use crate::skins::slog::{log_error, log_info, log_warn};
 use crate::skins::{announcer_fix, lcu_ext, paths};
 
 const CREATE_NO_WINDOW: u32 = 0x0800_0000;
-/// Champion content is duplicated into a handful of event-variant WADs
-/// (Strawberry_X, Ruby_X…). In the family and ≤ this many WADs total →
-/// champion content; beyond it → shared junk.
-const MAX_FAMILY_WADS: u32 = 5;
+/// An entry in ≤ this many game WADs is specifically-targetable content
+/// (own WAD, locale sibling, event twins, other champs in a multi-champ
+/// pack) — cheap to merge and presumed intentional. Beyond it → shared junk
+/// (the catastrophic entries live in 34–227 WADs).
+const MAX_ENTRY_WADS: u32 = 5;
 /// Bump to force every mod through the scoper again after a rule change.
-const SCOPE_RULE_VERSION: u32 = 1;
+/// v2: count-only rule — v1's WAD-family membership requirement wrongly
+/// stripped cross-champion content from multi-champion packs.
+const SCOPE_RULE_VERSION: u32 = 2;
 
 /// One sweep at a time — startup and ChampSelect entry can race.
 static SWEEP_RUNNING: AtomicBool = AtomicBool::new(false);
@@ -100,8 +107,6 @@ fn stamp(path: &Path) -> Option<String> {
 struct GameIndex {
     /// path-hash -> number of game WADs containing it.
     counts: HashMap<u64, u32>,
-    /// lowercase wad basename -> its entry hashes.
-    by_name: HashMap<String, HashSet<u64>>,
 }
 
 /// Parse a WAD v3 table of contents into its entry path-hash set.
@@ -146,43 +151,21 @@ fn build_game_index(game_dir: &Path) -> Option<GameIndex> {
         return None;
     }
     let mut counts: HashMap<u64, u32> = HashMap::new();
-    let mut by_name = HashMap::new();
+    let mut indexed = 0u32;
     for w in &wads {
         let Some(hashes) = wad_toc(w) else { continue };
         for &h in &hashes {
             *counts.entry(h).or_insert(0) += 1;
         }
-        if let Some(name) = w.file_name().and_then(|n| n.to_str()) {
-            by_name.insert(name.to_lowercase(), hashes);
-        }
+        indexed += 1;
     }
-    log_info!("[MOD_SCOPE] Indexed {} game WADs ({} distinct entries)", by_name.len(), counts.len());
-    Some(GameIndex { counts, by_name })
+    log_info!("[MOD_SCOPE] Indexed {indexed} game WADs ({} distinct entries)", counts.len());
+    Some(GameIndex { counts })
 }
 
 impl GameIndex {
     fn count(&self, h: u64) -> u32 {
         self.counts.get(&h).copied().unwrap_or(0)
-    }
-
-    /// Union of the WAD family for a mod member name like
-    /// `TwistedFate.wad.client`: `twistedfate.wad.client` + every
-    /// `twistedfate.<locale>.wad.client`. Empty when the game has no such WAD.
-    fn family(&self, member: &str) -> HashSet<u64> {
-        let prefix = member.to_lowercase();
-        let prefix = prefix.split('.').next().unwrap_or_default().to_string();
-        let mut union = HashSet::new();
-        let mut found = false;
-        for (name, hashes) in &self.by_name {
-            if *name == format!("{prefix}.wad.client") || name.starts_with(&format!("{prefix}.")) {
-                union.extend(hashes.iter().copied());
-                found = true;
-            }
-        }
-        if !found {
-            union.clear();
-        }
-        union
     }
 }
 
@@ -219,22 +202,21 @@ fn run_tool(exe: &Path, args: &[&std::ffi::OsStr]) -> Result<(), String> {
 
 /// Walk `dir`, deleting entries that fail the scoping rule.
 /// Returns (kept, dropped-descriptions).
-fn scope_dir(dir: &Path, family: &HashSet<u64>, index: &GameIndex) -> (u32, Vec<String>) {
-    fn walk(dir: &Path, root: &Path, family: &HashSet<u64>, index: &GameIndex, kept: &mut u32, dropped: &mut Vec<String>) {
+fn scope_dir(dir: &Path, index: &GameIndex) -> (u32, Vec<String>) {
+    fn walk(dir: &Path, root: &Path, index: &GameIndex, kept: &mut u32, dropped: &mut Vec<String>) {
         let Ok(entries) = std::fs::read_dir(dir) else { return };
         for entry in entries.flatten() {
             let path = entry.path();
             if path.is_dir() {
-                walk(&path, root, family, index, kept, dropped);
+                walk(&path, root, index, kept, dropped);
                 continue;
             }
             let rel = path.strip_prefix(root).unwrap_or(&path).to_string_lossy().replace('\\', "/");
             if rel == "hashed_files.json" {
                 continue;
             }
-            let h = path_hash(&rel);
-            let n = index.count(h);
-            if n == 0 || (family.contains(&h) && n <= MAX_FAMILY_WADS) {
+            let n = index.count(path_hash(&rel));
+            if n <= MAX_ENTRY_WADS {
                 *kept += 1;
             } else {
                 dropped.push(format!("{rel} ({n} wads)"));
@@ -244,7 +226,7 @@ fn scope_dir(dir: &Path, family: &HashSet<u64>, index: &GameIndex) -> (u32, Vec<
     }
     let mut kept = 0;
     let mut dropped = Vec::new();
-    walk(dir, dir, family, index, &mut kept, &mut dropped);
+    walk(dir, dir, index, &mut kept, &mut dropped);
     (kept, dropped)
 }
 
@@ -281,12 +263,6 @@ fn scope_fantome(path: &Path, index: &GameIndex) -> Result<usize, String> {
         if !member.to_lowercase().ends_with(".wad.client") {
             continue;
         }
-        let family = index.family(&member);
-        if family.is_empty() {
-            log_warn!("[MOD_SCOPE] {member}: no matching game WAD - keeping unscoped");
-            packed_members.push((member, member_path));
-            continue;
-        }
 
         let filter_dir = if member_path.is_file() {
             // Packed member: unpack to filter its entries.
@@ -301,7 +277,7 @@ fn scope_fantome(path: &Path, index: &GameIndex) -> Result<usize, String> {
             member_path.clone()
         };
 
-        let (kept, dropped) = scope_dir(&filter_dir, &family, index);
+        let (kept, dropped) = scope_dir(&filter_dir, index);
         log_info!("[MOD_SCOPE] {member}: kept {kept}, dropped {}", dropped.len());
         let member_dropped = dropped.len();
         total_dropped.extend(dropped);
@@ -532,18 +508,6 @@ mod tests {
         );
     }
 
-    #[test]
-    fn family_unions_locale_wads_and_is_empty_for_unknown() {
-        let mut by_name = HashMap::new();
-        by_name.insert("jhin.wad.client".to_string(), HashSet::from([1u64, 2]));
-        by_name.insert("jhin.en_us.wad.client".to_string(), HashSet::from([3u64]));
-        by_name.insert("strawberry_jhin.wad.client".to_string(), HashSet::from([9u64]));
-        let idx = GameIndex { counts: HashMap::new(), by_name };
-
-        let fam = idx.family("Jhin.wad.client");
-        assert_eq!(fam, HashSet::from([1u64, 2, 3])); // NOT the Strawberry twin
-        assert!(idx.family("NoSuchChamp.wad.client").is_empty());
-    }
 
     /// Full-pipeline proof against a real mod + real League install. Skips
     /// silently when either is absent (CI); run manually with
@@ -583,28 +547,30 @@ mod tests {
     }
 
     #[test]
-    fn scope_dir_keeps_new_and_family_entries_drops_shared() {
+    fn scope_dir_keeps_new_own_and_cross_champion_entries_drops_shared() {
         let root = std::env::temp_dir().join("chud_mod_scope_test_dir");
         let _ = std::fs::remove_dir_all(&root);
-        for rel in ["assets/characters/jhin/skins/base/jhin.skn", "assets/shared/particles/defaultfalloff.tex", "newfile.custom"] {
+        for rel in [
+            "assets/characters/jhin/skins/base/jhin.skn",   // own champion (2 wads)
+            "assets/characters/akali/skins/base/akali.skn", // cross-champ in a multi-champ pack (1 wad)
+            "assets/shared/particles/defaultfalloff.tex",   // shared junk (226 wads)
+            "newfile.custom",                               // brand-new (0 wads)
+        ] {
             let p = root.join(rel);
             std::fs::create_dir_all(p.parent().unwrap()).unwrap();
             std::fs::write(&p, b"x").unwrap();
         }
-        let champ_hash = path_hash("assets/characters/jhin/skins/base/jhin.skn");
-        let shared_hash = path_hash("assets/shared/particles/defaultfalloff.tex");
         let mut counts = HashMap::new();
-        counts.insert(champ_hash, 2u32); // Jhin + one event twin
-        counts.insert(shared_hash, 226u32); // shared junk
-        let idx = GameIndex { counts, by_name: HashMap::new() };
-        let family = HashSet::from([champ_hash]);
+        counts.insert(path_hash("assets/characters/jhin/skins/base/jhin.skn"), 2u32);
+        counts.insert(path_hash("assets/characters/akali/skins/base/akali.skn"), 1u32);
+        counts.insert(path_hash("assets/shared/particles/defaultfalloff.tex"), 226u32);
+        let idx = GameIndex { counts };
 
-        let (kept, dropped) = scope_dir(&root, &family, &idx);
-        assert_eq!(kept, 2, "champion entry + brand-new entry survive");
+        let (kept, dropped) = scope_dir(&root, &idx);
+        assert_eq!(kept, 3, "own + cross-champion + brand-new entries all survive");
         assert_eq!(dropped.len(), 1);
         assert!(dropped[0].contains("defaultfalloff.tex"));
-        assert!(root.join("assets/characters/jhin/skins/base/jhin.skn").exists());
-        assert!(root.join("newfile.custom").exists());
+        assert!(root.join("assets/characters/akali/skins/base/akali.skn").exists(), "v1 regression: multi-champ pack content must survive");
         assert!(!root.join("assets/shared/particles/defaultfalloff.tex").exists());
 
         let _ = std::fs::remove_dir_all(&root);
