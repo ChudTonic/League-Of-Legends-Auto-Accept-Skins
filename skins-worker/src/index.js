@@ -333,10 +333,9 @@ export default {
     ctx.waitUntil((async () => {
       const s = await crawlSpurt(env);
       if (s.idle || s.assembled != null) {
-        // The upstream source confirmed our load is negligible, so mirror aggressively:
-        // BOTH files and thumbnails every tick, in parallel. This is a burst
-        // that self-idles once the whole catalog is in R2 (it only fetches
-        // what's missing), so the high rate costs nothing once caught up.
+        // Once the day's crawl is done, mirror files and thumbnails into R2
+        // in parallel every tick. Both only fetch what's missing, so this is
+        // a one-time catch-up burst that self-idles once fully mirrored.
         await Promise.all([trickleMirror(env, 60), warmImages(env, 200)]);
       }
     })());
