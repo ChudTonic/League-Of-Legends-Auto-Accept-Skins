@@ -5,9 +5,9 @@
 <h1 align="center">Chud</h1>
 
 <p align="center">
-  A friendly desktop companion for League of Legends — <b>change your skins</b>, sync them
-  with your friends automatically, auto-accept your queues, and keep range indicators on
-  screen. One tiny <code>.exe</code>, built in Rust, and it <b>updates itself</b>.
+  The all-in-one desktop companion for League of Legends. Change your skins, hear
+  <b>your own custom announcer</b>, sync cosmetics with friends, and never miss a queue —
+  all from one tiny self-updating <code>.exe</code>, built in Rust.
 </p>
 
 <p align="center">
@@ -15,6 +15,20 @@
   &nbsp;·&nbsp;
   <a href="https://discord.gg/SxS5yjdnwR"><b>💬 Join the Discord</b></a>
 </p>
+
+---
+
+## What you get
+
+- 🎨 **Any skin, any champion** — pick skins & chromas right inside the League client, owned or not. Only you need Chud to see them.
+- 🤝 **Automatic party sync** — friends in your lobby who use Chud see each other's skins *and* announcer, auto-detected with zero setup.
+- 📚 **Skin Library** — browse and one-click install thousands of community skins, maps, announcers, and more, without alt-tabbing.
+- 🎙️ **Announcer Studio** — build your **own** announcer: drop a clip or record your mic for any call (First Blood, Ace, Pentakill…) and it installs to your wheel. Nothing else on the market does this.
+- 🥜 **Chud Originals** — curated first-party packs (like the **BurntPeanut** announcer) that work on Summoner's Rift *and* ARAM.
+- ✅ **Auto-Accept** — snaps up every ready check the instant it pops.
+- 🎯 **Auto-Range** — keeps your attack-range indicator on screen during a match.
+- 📊 **Live profile** — rank, recent form, champ pool, and match history pulled from your client.
+- 🔄 **Self-updating** — one signed `.exe` that installs its own updates. No reinstalls, ever.
 
 ---
 
@@ -50,6 +64,12 @@ Pick any skin (or chroma) for any champion, right inside the League client. Chud
 Browse and **one-click install** thousands of community skins, maps, announcers, fonts, and more — right inside Chud. Search by champion or category, favorite the ones you like, and everything you install shows up automatically on the in-client **Custom Mods** button in champ select.
 
 ![Chud's Skin Library — browse, search, and install community mods by champion and category](docs/screenshot-library.png)
+
+### 🎙️ Announcer Studio — make your own announcer
+
+Turn **any** sound into your League announcer. Open **Studio**, pick a line (First Blood, kills, aces, sprees, objectives, victory…), and **drop an audio file or record your mic**. Chud builds a real announcer pack and installs it straight to your announcer wheel — no external tools, no Wwise, no file wrangling. Your pack works on Summoner's Rift, ARAM, and every map variant automatically, and party-syncs to friends who don't even have the audio.
+
+Want something ready-made? Grab a **Chud Original** like the **🥜 BurntPeanut** announcer from the Library — one click and it's in your wheel.
 
 ### 🛡️ Queue & match helpers
 
@@ -125,6 +145,7 @@ native/
     icons/     ← app icons
   src-tauri/resources/pengu-loader/plugins/CHUD-*   ← in-client menus (run inside the League client)
 relay-worker/  ← Cloudflare Worker (Durable Object) that relays party skin-sync
+skins-worker/  ← Cloudflare Worker: caches the skin/mod catalog + serves Chud Originals from R2
 docs/          ← screenshots
 ```
 
