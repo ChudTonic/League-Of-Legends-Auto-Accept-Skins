@@ -2588,6 +2588,7 @@ dependencies = [
  "image",
  "indexmap 2.14.0",
  "junction",
+ "modscan-core",
  "native-tls",
  "rand 0.8.6",
  "rdev",

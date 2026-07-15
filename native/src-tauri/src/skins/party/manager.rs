@@ -715,10 +715,12 @@ impl PartyManager {
             // External download (Chud's Library Worker), NOT the LCU — must not
             // reuse the loopback-only, cert-relaxed LCU client.
             let http = crate::net::build_external_client(180.0, allowed.clone());
-            match crate::place_library_mod(None, endpoint.trim_end_matches('/'), &http, &allowed, &mod_id, &catalog_name, "", None, "announcer")
+            // `force=false` — and there is no override on this auto path at all
+            // (P0-F): a peer can never push a ModScan-flagged file onto you.
+            match crate::place_library_mod(None, endpoint.trim_end_matches('/'), &http, &allowed, &mod_id, &catalog_name, "", None, "announcer", false)
                 .await
             {
-                Ok(rec) => {
+                Ok((Some(rec), _summary)) => {
                     let app_state = mgr.app.state::<Arc<crate::AppState>>();
                     {
                         let mut cfg = app_state.config.lock_safe();
@@ -726,6 +728,13 @@ impl PartyManager {
                         let _ = cfg.save();
                     }
                     log_info!("[PARTY] Announcer '{catalog_name}' downloaded + converted - will be staged at injection");
+                }
+                Ok((None, summary)) => {
+                    log_warn!("[MODSCAN] peer announcer '{catalog_name}' blocked ({}) — not installed", summary.verdict);
+                    // Deliberately do NOT remove `mod_id` from `announcer_downloads`:
+                    // unlike a transient network failure, a ModScan block isn't
+                    // something a retry can fix, and there's no user override on
+                    // this auto path — so this mod-id is never attempted again.
                 }
                 Err(e) => {
                     log_warn!("[PARTY] Could not fetch peer announcer '{catalog_name}': {e}");

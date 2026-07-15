@@ -1119,6 +1119,116 @@ fn library_category_dir(category: &str) -> Option<&'static str> {
     }
 }
 
+/// ModScan result surfaced to the UI before a downloaded mod is written to
+/// disk (see `scan_downloaded_mod`). `vt` is the chud-skins Worker's
+/// reputation lookup response verbatim, when the lookup succeeded — a
+/// timeout/miss/offline just leaves it `None` rather than blocking anything;
+/// VT is an escalation signal on top of the structural scan, never a
+/// required gate on its own.
+#[derive(serde::Serialize, Clone)]
+pub(crate) struct ScanSummary {
+    pub(crate) verdict: String,
+    pub(crate) sha256: String,
+    pub(crate) blocking: bool,
+    pub(crate) findings: Vec<serde_json::Value>,
+    pub(crate) vt: Option<serde_json::Value>,
+}
+
+/// The worse of two verdicts (Malicious > Suspicious > Clean) — used so a
+/// VirusTotal hit can only ESCALATE the structural scanner's call, never
+/// downgrade it.
+fn worse_verdict(a: modscan_core::Verdict, b: modscan_core::Verdict) -> modscan_core::Verdict {
+    use modscan_core::Verdict::*;
+    match (a, b) {
+        (Malicious, _) | (_, Malicious) => Malicious,
+        (Suspicious, _) | (_, Suspicious) => Suspicious,
+        _ => Clean,
+    }
+}
+
+fn verdict_str(v: modscan_core::Verdict) -> &'static str {
+    match v {
+        modscan_core::Verdict::Clean => "clean",
+        modscan_core::Verdict::Suspicious => "suspicious",
+        modscan_core::Verdict::Malicious => "malicious",
+    }
+}
+
+/// Scan a just-downloaded mod's bytes IN MEMORY, before anything is written
+/// to disk — that's the whole point of ModScan: a malicious archive never
+/// touches the filesystem unless the caller explicitly overrides
+/// (`place_library_mod`'s `force`). The structural scan is sync/CPU-bound so
+/// it runs on a blocking thread; the reputation lookup is a best-effort
+/// network call layered on top that can only make the verdict worse, never
+/// better, and never turns into a hard error for the caller.
+async fn scan_downloaded_mod(
+    endpoint: &str,
+    allowed: &std::collections::HashSet<String>,
+    http: &reqwest::Client,
+    bytes: Vec<u8>,
+    label: &str,
+) -> ScanSummary {
+    use skins::slog::log_warn;
+
+    let report = match tokio::task::spawn_blocking(move || modscan_core::scan_bytes(&bytes)).await {
+        Ok(report) => report,
+        Err(e) => {
+            // modscan-core's own contract is "never panics" — this should be
+            // unreachable, but fail CLOSED (blocking) rather than silently
+            // treat an internal failure as a clean mod.
+            log_warn!("[MODSCAN] {label}: scan task failed unexpectedly: {e}");
+            return ScanSummary {
+                verdict: "malicious".to_string(),
+                sha256: String::new(),
+                blocking: true,
+                findings: vec![json!({ "severity": "malicious", "code": "scan-task-failed", "entry": null, "detail": e.to_string() })],
+                vt: None,
+            };
+        }
+    };
+
+    // Best-effort VirusTotal reputation via the chud-skins Worker (already
+    // allowlisted — see `net::BUILT_IN_HOSTS`). Any failure (timeout, 404,
+    // offline) just yields `None`; it must never turn a Clean/Suspicious
+    // verdict into a hard error.
+    let vt_json = net::get_json_checked(
+        http,
+        &format!("{}/reputation/{}", endpoint.trim_end_matches('/'), report.sha256),
+        allowed,
+        64 * 1024,
+    )
+    .await
+    .ok();
+
+    let vt_escalation = vt_json.as_ref().and_then(|v| {
+        if v.get("known").and_then(|k| k.as_bool()) != Some(true) {
+            return None;
+        }
+        match v.get("verdict").and_then(|s| s.as_str()) {
+            Some("malicious") => Some(modscan_core::Verdict::Malicious),
+            Some("suspicious") => Some(modscan_core::Verdict::Suspicious),
+            _ => None,
+        }
+    });
+    let effective = vt_escalation.map(|vt| worse_verdict(report.verdict, vt)).unwrap_or(report.verdict);
+    let verdict = verdict_str(effective);
+    let n = report.findings.len();
+    if effective != modscan_core::Verdict::Clean {
+        log_warn!("[MODSCAN] {label}: {verdict} — {n} finding(s); {}", report.human_summary());
+    }
+
+    let findings: Vec<serde_json::Value> =
+        report.findings.iter().map(|f| serde_json::to_value(f).unwrap_or_else(|_| json!({}))).collect();
+
+    ScanSummary {
+        verdict: verdict.to_string(),
+        sha256: report.sha256,
+        blocking: effective != modscan_core::Verdict::Clean,
+        findings,
+        vt: vt_json,
+    }
+}
+
 /// Install a mod: resolve its download from the Worker (served from our R2),
 /// then drop the `.fantome` into the custom-mod store so the in-client "Custom
 /// Mods" button surfaces it — champion skins under `mods/skins/{champ*1000}`
@@ -1126,10 +1236,14 @@ fn library_category_dir(category: &str) -> Option<&'static str> {
 /// their own `mods/{category}` folder (matched by the wheel's category tabs).
 /// No separate "apply" step. The install record (config) persists across
 /// updates; `rec.file` is the path relative to `mods/` so removal can find it.
-/// Download one Library mod from the Worker (our R2) and place it in the
-/// custom-mod store, returning the install record (WITHOUT touching config —
-/// the caller records it, so `library_install_bundle` can batch a whole pack
-/// under one save). Shared by single install and bundle install.
+/// Download one Library mod from the Worker (our R2), scan it IN MEMORY
+/// (ModScan), and place it in the custom-mod store, returning the install
+/// record (WITHOUT touching config — the caller records it, so
+/// `library_install_bundle` can batch a whole pack under one save) alongside
+/// the scan summary. Shared by single install and bundle install. When the
+/// scan blocks (`Suspicious`/`Malicious`) and `force` is false, NOTHING is
+/// written to disk — the returned record is `None` and the caller must treat
+/// that as "not installed."
 pub(crate) async fn place_library_mod(
     app: Option<&AppHandle>,
     base: &str,
@@ -1140,7 +1254,8 @@ pub(crate) async fn place_library_mod(
     champ: &str,
     champ_id: Option<i64>,
     category: &str,
-) -> Result<config::InstalledMod, String> {
+    force: bool,
+) -> Result<(Option<config::InstalledMod>, ScanSummary), String> {
     use skins::slog::{log_info, log_warn};
     // Resolve the destination folder (relative to mods/) by category.
     let rel_dir: std::path::PathBuf = match library_category_dir(category) {
@@ -1168,6 +1283,14 @@ pub(crate) async fn place_library_mod(
     // 9-byte .fantome written to disk.
     if raw_bytes.len() < 1024 {
         return Err(format!("'{name}' isn't available yet (still mirroring) — try again shortly."));
+    }
+
+    // ModScan: scan the downloaded bytes IN MEMORY before anything below
+    // touches disk. A blocking verdict without `force` stops here — nothing
+    // is written, nothing is converted, nothing is recorded.
+    let summary = scan_downloaded_mod(base, allowed, http, raw_bytes.clone(), name).await;
+    if summary.blocking && !force {
+        return Ok((None, summary));
     }
 
     // Announcer packs: retarget the global announcer banks so the pack works
@@ -1202,7 +1325,8 @@ pub(crate) async fn place_library_mod(
     let rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
     log_info!("[LIBRARY] installed '{name}' ({size_mb:.1} MB) -> mods/{rel_file}");
 
-    Ok(config::InstalledMod { name: name.to_string(), champ: champ.to_string(), version: "1.0.0".into(), size_mb, file: rel_file })
+    let record = config::InstalledMod { name: name.to_string(), champ: champ.to_string(), version: "1.0.0".into(), size_mb, file: rel_file };
+    Ok((Some(record), summary))
 }
 
 /// Announcer Studio: return the assignable slot list (key/category/label/
@@ -1228,6 +1352,11 @@ async fn announcer_studio_build(
     Ok(serde_json::to_value(result).unwrap_or_else(|_| json!({"ok": false})))
 }
 
+/// Install a single Library mod, gated behind ModScan (see
+/// `place_library_mod`). Returns `{status: "installed"|"blocked", scan,
+/// record}` — `force` lets the user explicitly override a blocked verdict
+/// after seeing the scan warning; it defaults to `false` so a bare call
+/// never silently installs something flagged.
 #[tauri::command]
 async fn library_install(
     app: AppHandle,
@@ -1236,6 +1365,7 @@ async fn library_install(
     champ: String,
     champ_id: Option<i64>,
     category: Option<String>,
+    force: Option<bool>,
     state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
     let (endpoint, allowed) = {
@@ -1243,13 +1373,33 @@ async fn library_install(
         (c.library.endpoint.clone(), net::allowed_origins(&c))
     };
     let http = net::build_external_client(180.0, allowed.clone());
-    let rec = place_library_mod(Some(&app), endpoint.trim_end_matches('/'), &http, &allowed, &mod_id, &name, &champ, champ_id, &category.unwrap_or_default()).await?;
-    {
-        let mut c = state.config.lock_safe();
-        c.library.installed.insert(mod_id, rec.clone());
-        let _ = c.save();
-    }
-    Ok(serde_json::to_value(rec).unwrap_or_else(|_| json!({})))
+    let (rec, summary) = place_library_mod(
+        Some(&app),
+        endpoint.trim_end_matches('/'),
+        &http,
+        &allowed,
+        &mod_id,
+        &name,
+        &champ,
+        champ_id,
+        &category.unwrap_or_default(),
+        force.unwrap_or(false),
+    )
+    .await?;
+    let record_json = match &rec {
+        Some(r) => {
+            let mut c = state.config.lock_safe();
+            c.library.installed.insert(mod_id, r.clone());
+            let _ = c.save();
+            serde_json::to_value(r).unwrap_or_else(|_| json!({}))
+        }
+        None => serde_json::Value::Null,
+    };
+    Ok(json!({
+        "status": if rec.is_some() { "installed" } else { "blocked" },
+        "scan": serde_json::to_value(&summary).unwrap_or_else(|_| json!({})),
+        "record": record_json,
+    }))
 }
 
 /// The curated champion bundles (from the Worker), enriched with per-skin
@@ -1285,16 +1435,24 @@ async fn library_install_bundle(
     let http = net::build_external_client(180.0, allowed.clone());
     log_info!("[LIBRARY] installing bundle '{champ}' ({} skins)", skins.len());
 
+    // Bundles are batch installs: a blocked skin is reported (not force-
+    // installed) — there's no bundle-wide override in v1, the user installs
+    // a blocked one individually if they choose to accept the risk.
     let mut recs: Vec<(String, config::InstalledMod)> = Vec::new();
     let mut failed: Vec<String> = Vec::new();
+    let mut blocked: Vec<serde_json::Value> = Vec::new();
     for s in &skins {
         let id = s.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string();
         let nm = s.get("name").and_then(|v| v.as_str()).unwrap_or("Skin").to_string();
         if id.is_empty() {
             continue;
         }
-        match place_library_mod(None, &base, &http, &allowed, &id, &nm, &champ, champ_id, "champion_skin").await {
-            Ok(rec) => recs.push((id, rec)),
+        match place_library_mod(None, &base, &http, &allowed, &id, &nm, &champ, champ_id, "champion_skin", false).await {
+            Ok((Some(rec), _summary)) => recs.push((id, rec)),
+            Ok((None, summary)) => {
+                log_warn!("[LIBRARY] bundle '{champ}' skin '{nm}' blocked by ModScan: {}", summary.verdict);
+                blocked.push(json!({ "id": id, "name": nm, "scan": summary }));
+            }
             Err(e) => { log_warn!("[LIBRARY] bundle '{champ}' skin '{nm}' skipped: {e}"); failed.push(nm); }
         }
     }
@@ -1305,8 +1463,8 @@ async fn library_install_bundle(
         }
         let _ = c.save();
     }
-    log_info!("[LIBRARY] bundle '{champ}': {} installed, {} skipped", recs.len(), failed.len());
-    Ok(json!({ "champ": champ, "installed": recs.len(), "failed": failed, "installedRecords": c_installed_ids(&recs) }))
+    log_info!("[LIBRARY] bundle '{champ}': {} installed, {} skipped, {} blocked", recs.len(), failed.len(), blocked.len());
+    Ok(json!({ "champ": champ, "installed": recs.len(), "failed": failed, "blocked": blocked, "installedRecords": c_installed_ids(&recs) }))
 }
 
 /// Small helper: the mod ids just installed by a bundle (for the UI to mark).

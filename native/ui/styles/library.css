@@ -154,3 +154,30 @@
 .lb-vplay:hover { transform: scale(1.04); border-color: rgba(255,61,154,0.7); background: rgba(7,11,22,0.8); }
 .lb-vplay svg { color: #ff3d9a; }
 .lb-vframe { position: absolute; inset: 0; width: 100%; height: 100%; border: 0; border-radius: inherit; background: #000; }
+
+/* ModScan block warning (modal shown when a download comes back Suspicious/Malicious) */
+.lb-scan-modal { width: 560px; }
+.lb-scan-modal.lb-scan-malicious { border-color: rgba(255,84,112,0.5); box-shadow: 0 24px 80px rgba(255,84,112,0.22); }
+.lb-scan-modal.lb-scan-suspicious { border-color: rgba(230,162,60,0.4); }
+.lb-scan-body { display: flex; flex-direction: column; gap: 14px; padding: 16px 20px 20px; }
+.lb-scan-banner { display: flex; gap: 12px; align-items: flex-start; padding: 14px; border-radius: 12px; }
+.lb-scan-malicious .lb-scan-banner { background: rgba(255,84,112,0.12); border: 1px solid rgba(255,84,112,0.45); }
+.lb-scan-suspicious .lb-scan-banner { background: rgba(230,162,60,0.12); border: 1px solid rgba(230,162,60,0.45); }
+.lb-scan-icon { font-size: 22px; line-height: 1; }
+.lb-scan-malicious .lb-scan-icon { color: var(--red); }
+.lb-scan-suspicious .lb-scan-icon { color: #e6a23c; }
+.lb-scan-title { font-size: 15px; font-weight: 700; color: #f2f2ff; }
+.lb-scan-sub { font-size: 12px; color: #9a9ac8; margin-top: 4px; }
+.lb-scan-findings { display: flex; flex-direction: column; gap: 8px; max-height: 260px; overflow-y: auto; }
+.lb-scan-finding { display: flex; gap: 9px; align-items: flex-start; padding: 9px 10px; border-radius: 9px; background: rgba(255,255,255,0.03); border: 1px solid rgba(255,255,255,0.08); font-size: 12px; }
+.lb-scan-fdot { width: 7px; height: 7px; border-radius: 50%; margin-top: 5px; flex: 0 0 auto; }
+.lb-scan-sev-malicious .lb-scan-fdot { background: var(--red); }
+.lb-scan-sev-suspicious .lb-scan-fdot { background: #e6a23c; }
+.lb-scan-sev-info .lb-scan-fdot { background: #6b6b96; }
+.lb-scan-fcode { font-family: var(--font-mono); font-size: 10.5px; text-transform: uppercase; color: #f2f2ff; letter-spacing: .02em; }
+.lb-scan-fentry { color: #7ceeff; text-transform: none; }
+.lb-scan-fdetail { color: #9a9ac8; margin-top: 2px; }
+.lb-scan-vt { font-family: var(--font-mono); font-size: 11px; color: #e6a23c; }
+.lb-scan-actions { display: flex; gap: 10px; justify-content: flex-end; }
+.lb-scan-foot { font-family: var(--font-mono); font-size: 9.5px; color: #6b6b96; }
+.lb-scan-tag { margin-left: 8px; color: #7ceeff; }

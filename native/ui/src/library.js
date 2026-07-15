@@ -29,6 +29,11 @@
     // library-install-phase event; swaps the progress caption while the pack
     // is being rewritten (e.g. announcer packs retargeted for all modes).
     phase: {},
+    // Set when `library_install` comes back `{status:"blocked"}` — ModScan
+    // flagged the download before it ever touched disk. `{id, name, scan}`;
+    // rendered instead of the detail modal (see `paint()`) until the user
+    // cancels or explicitly installs anyway.
+    scanBlock: null,
   };
   let root = null;
 
@@ -307,8 +312,18 @@
       const done = (r && r.installedRecords) || [];
       done.forEach((id) => { const s = b.skins.find((x) => x.id === id); st.installed[id] = { name: s ? s.name : id, champ: b.champ, version: "1.0.0" }; });
       const nFail = (r && r.failed && r.failed.length) || 0;
-      if (nFail) toast(`${b.champ} pack — ${r.installed} of ${b.skins.length} installed`, `${nFail} skin${nFail === 1 ? "" : "s"} still mirroring — try again shortly for the rest.`, "warning");
-      else toast(`${b.champ} pack installed`, `${r.installed} skins ready — pick them on the Custom Mods button in champ select.`, "success");
+      const blocked = (r && r.blocked) || [];
+      // Bundles don't get a force-all override (v1) — a blocked skin is
+      // surfaced here so the user knows to review it individually, never
+      // silently dropped.
+      if (blocked.length) {
+        const names = blocked.map((x) => x.name || x.id).join(", ");
+        toast(`${b.champ} pack — ${r.installed} of ${b.skins.length} installed`, `${blocked.length} blocked by ModScan (${names}) — install individually to review and override.`, "danger");
+      } else if (nFail) {
+        toast(`${b.champ} pack — ${r.installed} of ${b.skins.length} installed`, `${nFail} skin${nFail === 1 ? "" : "s"} still mirroring — try again shortly for the rest.`, "warning");
+      } else {
+        toast(`${b.champ} pack installed`, `${r.installed} skins ready — pick them on the Custom Mods button in champ select.`, "success");
+      }
     } catch (e) {
       clearInterval(iv); delete st.bundleInstalling[champ];
       toast("Pack install failed", String(e).slice(0, 120), "danger");
@@ -357,8 +372,50 @@
           <div class="lb-mstats"><span>${fmtN(m.views)} views</span><span>↓ ${fmtN(m.installs)}</span><span>♥ ${fmtN(m.likes)}</span></div>
           ${m.description ? `<div class="lb-mdesc">${esc(m.description)}</div>` : ""}
           ${m.view ? `<a href="#" class="lb-rflink" data-view="${esc(m.view)}"><svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M7 17 17 7M9 7h8v8"/></svg>View on RuneForge</a>` : ""}
-          <div class="lb-maction">${action}<div class="lb-mfoot">Installs straight to Chud. In champ select, click the <b>Custom Mods</b> button and pick it when this champion is up.</div></div>
+          <div class="lb-maction">${action}<div class="lb-mfoot">Installs straight to Chud. In champ select, click the <b>Custom Mods</b> button and pick it when this champion is up. <span class="lb-scan-tag">🛡 Scanned by ModScan</span></div></div>
         </div>
+      </div>
+    </div></div>`;
+  }
+
+  // ── ModScan block modal ──
+  // Rendered instead of the detail modal (see `paint()`) whenever
+  // `library_install` comes back `{status:"blocked"}` — the file was never
+  // written to disk. "Install anyway" is the only override, and it's only
+  // ever reachable from here (a user-initiated install click); the bundle
+  // path never force-installs (see `installBundle`).
+  function scanBlockModalHtml(block) {
+    const scan = block.scan || {};
+    const verdict = scan.verdict || "suspicious";
+    const isMalicious = verdict === "malicious";
+    const findings = scan.findings || [];
+    const vt = scan.vt && scan.vt.vt;
+    const vtLine = vt
+      ? `<div class="lb-scan-vt">VirusTotal: ${(vt.malicious || 0) + (vt.suspicious || 0)}/${vt.total || 0} engines flagged this</div>`
+      : "";
+    const findingRows = findings.length
+      ? findings.map((f) => `<div class="lb-scan-finding lb-scan-sev-${esc(f.severity || "info")}">
+          <span class="lb-scan-fdot"></span>
+          <div><div class="lb-scan-fcode">${esc((f.code || "finding").toUpperCase())}${f.entry ? ` · <span class="lb-scan-fentry">${esc(f.entry)}</span>` : ""}</div>
+          <div class="lb-scan-fdetail">${esc(f.detail || "")}</div></div>
+        </div>`).join("")
+      : `<div class="lb-scan-finding lb-scan-sev-info"><span class="lb-scan-fdot"></span><div class="lb-scan-fdetail">No individual findings — the file could not be verified as a normal archive.</div></div>`;
+    return `<div class="lb-backdrop" data-close="1"><div class="lb-modal lb-scan-modal ${isMalicious ? "lb-scan-malicious" : "lb-scan-suspicious"}" role="dialog">
+      <div class="lb-mtop"></div>
+      <div class="lb-mhead"><span class="lb-mtab">ModScan</span><button class="lb-mx" data-close="1">✕</button></div>
+      <div class="lb-scan-body">
+        <div class="lb-scan-banner">
+          <span class="lb-scan-icon">⚠</span>
+          <div><div class="lb-scan-title">ModScan blocked this mod</div>
+          <div class="lb-scan-sub">${esc(block.name || block.id)} was flagged <b>${esc(verdict.toUpperCase())}</b> and was NOT installed.</div></div>
+        </div>
+        <div class="lb-scan-findings">${findingRows}</div>
+        ${vtLine}
+        <div class="lb-scan-actions">
+          <button class="btn" data-close="1">Cancel</button>
+          <button class="btn danger" data-install-force="${esc(block.id)}">Install anyway — I accept the risk</button>
+        </div>
+        <div class="lb-scan-foot">Scanned by ModScan — Chud's built-in structural + reputation check for downloaded mods.</div>
       </div>
     </div></div>`;
   }
@@ -375,7 +432,11 @@
   function paint() {
     if (!root) return;
     root.innerHTML = pageHtml();
-    ensureModalRoot().innerHTML = st.selId ? modalHtml((st.catalog || []).find((m) => m.id === st.selId) || {}) : "";
+    // The ModScan block modal takes priority over the detail modal — only
+    // one of the two is ever shown at a time.
+    ensureModalRoot().innerHTML = st.scanBlock
+      ? scanBlockModalHtml(st.scanBlock)
+      : (st.selId ? modalHtml((st.catalog || []).find((m) => m.id === st.selId) || {}) : "");
     wire();
     const s = document.getElementById("lbSearch");
     if (s && st.tab === "browse" && !st.selId) { s.focus(); s.setSelectionRange(s.value.length, s.value.length); }
@@ -398,7 +459,11 @@
     const search = document.getElementById("lbSearch");
     if (search) { let t = null; search.oninput = () => { clearTimeout(t); st.q = search.value; t = setTimeout(paintSoft, 160); }; }
     on("[data-open]", "onclick", (e) => { if (e.target.closest("[data-fav],[data-install],[data-remove],[data-apply]")) return; st.selId = e.currentTarget.dataset.open; paint(); });
-    on("[data-close]", "onclick", (e) => { if (e.target === e.currentTarget || e.currentTarget.classList.contains("lb-mx")) { st.selId = null; paint(); } });
+    // Closing the ModScan block modal only dismisses ITself — if it was
+    // opened from the detail modal (an install click there), the detail
+    // modal reappears underneath rather than also getting dismissed.
+    on("[data-close]", "onclick", (e) => { if (e.target === e.currentTarget || e.currentTarget.classList.contains("lb-mx")) { if (st.scanBlock) st.scanBlock = null; else st.selId = null; paint(); } });
+    on("[data-install-force]", "onclick", (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.installForce; st.scanBlock = null; install(id, true); });
     on("[data-video]", "onclick", (e) => {
       e.stopPropagation();
       const vid = e.currentTarget.dataset.video;
@@ -437,7 +502,11 @@
     if (chip) chip.textContent = "CNV";
   }
 
-  async function install(id) {
+  // `force` re-issues the install after the user has seen the ModScan block
+  // modal and explicitly clicked "Install anyway" — it's never set on the
+  // first attempt, so a bare install() call can never silently install
+  // something flagged.
+  async function install(id, force) {
     if (st.installing[id] != null || st.installed[id]) return;
     const m = (st.catalog || []).find((x) => x.id === id) || { name: id, champ: "" };
     if (!m.ready) { toast("Not ready yet", "This mod is still being prepared — try again shortly.", "warning"); return; }
@@ -446,9 +515,16 @@
     st.installing[id] = 5; paint();
     const iv = setInterval(() => { const c = st.installing[id]; if (c == null) return clearInterval(iv); st.installing[id] = Math.min(94, c + 3 + Math.random() * 6); setInstallProgressUI(id, st.installing[id]); }, 180);
     try {
-      const rec = await inv("library_install", { modId: id, name: m.name || id, champ: m.champ || "", champId: m.champId || null, category: m.rawCategory || "" });
+      const r = await inv("library_install", { modId: id, name: m.name || id, champ: m.champ || "", champId: m.champId || null, category: m.rawCategory || "", force: !!force });
       clearInterval(iv); delete st.installing[id]; delete st.phase[id];
-      st.installed[id] = rec || { name: m.name, version: "1.0.0" };
+      if (r && r.status === "blocked") {
+        // ModScan flagged it and (without force) nothing was written to disk —
+        // show the warning modal instead of marking it installed.
+        st.scanBlock = { id, name: m.name || id, scan: r.scan || {} };
+        paint();
+        return;
+      }
+      st.installed[id] = (r && r.record) || { name: m.name, version: "1.0.0" };
       toast("Mod installed", `${m.name || "Mod"} — pick it from the Custom Mods button in champ select.`, "success");
     } catch (e) {
       clearInterval(iv); delete st.installing[id]; delete st.phase[id];

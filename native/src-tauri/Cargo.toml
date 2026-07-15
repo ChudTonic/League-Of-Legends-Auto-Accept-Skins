@@ -1,6 +1,6 @@
 [package]
 name = "league-tools"
-version = "2.3.1"
+version = "2.4.0"
 description = "Chud — native League of Legends toolkit"
 authors = ["Joshua P Ivy"]
 edition = "2021"
@@ -39,6 +39,8 @@ zip = "2"
 xxhash-rust = { version = "0.8", features = ["xxh64"] }
 flate2 = "1"
 sha2 = "0.10"
+# In-memory malware scan of downloaded Library mods before they touch disk (P1-ModScan).
+modscan-core = { path = "../modscan-core" }
 rand = "0.8"
 ed25519-dalek = { version = "2", features = ["rand_core"] } # party-mode selection signing (P0-F)
 regex = "1"
