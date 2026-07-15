@@ -101,6 +101,8 @@ Chud operates **openly**: there is no anti-cheat evasion, and none will ever be 
 - 🛡️ **ModScan** — malicious mods are blocked before they reach disk.
 - 🧩 Auto-Accept is the safe core — it only talks to the local client API (no game memory, no injection).
 
+**In practice:** the maintainer has run **Auto-Accept and Auto-Range daily for over a year with no detection or ban.** That's one account's real-world experience with the queue/range tools — reassuring, but not a guarantee, and Riot can change what Vanguard flags at any time. Skin injection is the higher-risk surface; weigh it separately.
+
 **Don't use Chud on an account you aren't willing to lose.** Not affiliated with or endorsed by Riot Games.
 
 ---
