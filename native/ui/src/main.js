@@ -10,7 +10,7 @@
 // Skins control panel (S9, see docs/SKINS_PORT.md) — its own command/event
 // set, additive, does not touch anything above:
 //   commands: skins_get_state, skins_save_settings, skins_download,
-//             skins_activate_pengu, skins_set_enabled, skins_diagnostics,
+//             skins_activate_pengu, skins_set_enabled,
 //             skins_party_enable, skins_party_disable, skins_party_add_peer,
 //             skins_party_get_state, skins_party_set_consent,
 //             skins_party_set_auto_announcers
@@ -255,7 +255,7 @@ function wireDash() {
 
 // ── Settings ──────────────────────────────────────────────────────────────
 const DEFAULT_CONFIG = {
-  auto_accept: { check_interval: 1.0, retry_delay: 5.0, max_retries: 3, max_backoff: 30.0 },
+  auto_accept: { check_interval: 1.0, retry_delay: 5.0, max_backoff: 30.0 },
   autorange: { range_hold_key: "c", refresh_interval: 7.5 },
   safety: { block_in_ranked: true, injection_ack: false },
 };
@@ -278,7 +278,6 @@ function settingsHtml() {
   ${card("Auto-Accept", "bolt", [
     setField("Check interval", "Queue poll cadence", numInput("auto_accept", "check_interval", "s")),
     setField("Retry delay", "Reconnect backoff (base)", numInput("auto_accept", "retry_delay", "s")),
-    setField("Max retries", "", numInput("auto_accept", "max_retries", "")),
     setField("Max backoff", "Exponential backoff ceiling", numInput("auto_accept", "max_backoff", "s")),
   ].join(""))}
   ${card("Auto-Range", "crosshair", [

@@ -15,13 +15,12 @@ pub struct AutoAccept {
     pub enabled: bool,
     pub check_interval: f64,
     pub retry_delay: f64,
-    pub max_retries: u32,
     pub max_backoff: f64,
 }
 
 impl Default for AutoAccept {
     fn default() -> Self {
-        Self { enabled: true, check_interval: 1.0, retry_delay: 5.0, max_retries: 3, max_backoff: 30.0 }
+        Self { enabled: true, check_interval: 1.0, retry_delay: 5.0, max_backoff: 30.0 }
     }
 }
 
@@ -29,12 +28,11 @@ impl Default for AutoAccept {
 #[serde(default)]
 pub struct Lcu {
     pub request_timeout: f64,
-    pub cmdline_timeout: f64,
 }
 
 impl Default for Lcu {
     fn default() -> Self {
-        Self { request_timeout: 2.0, cmdline_timeout: 8.0 }
+        Self { request_timeout: 2.0 }
     }
 }
 

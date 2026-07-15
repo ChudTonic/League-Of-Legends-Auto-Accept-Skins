@@ -589,12 +589,6 @@ fn skins_set_ack(accepted: bool, app: AppHandle, state: tauri::State<Arc<AppStat
     skins_snapshot(&state)
 }
 
-/// Live injection-policy decision for the UI (typed code + verbatim message).
-#[tauri::command]
-fn skins_injection_policy(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
-    injection_policy_json(&state)
-}
-
 /// Kick off the skin + hash download pipeline on the async runtime and
 /// return immediately; progress/completion are reported via the
 /// `skins-download-progress`/`skins-download-done` events (main.js's Skins
@@ -747,13 +741,6 @@ fn skins_set_favorite(champ_id: i64, skin_id: Option<i64>, state: tauri::State<A
     let obj: serde_json::Map<String, serde_json::Value> =
         map.iter().map(|(c, s)| (c.to_string(), json!(s))).collect();
     serde_json::Value::Object(obj)
-}
-
-#[tauri::command]
-fn skins_diagnostics(state: tauri::State<Arc<AppState>>) -> serde_json::Value {
-    let bridge_port = state.skins_bridge.lock_safe().as_ref().map(|b| b.port());
-    let checks = skins_status_checks();
-    skins_diagnostics_value(&checks, bridge_port)
 }
 
 /// Fallback `party-state`-shaped JSON for the (brief) window before
@@ -972,30 +959,6 @@ fn set_library_enabled(enabled: bool, state: tauri::State<Arc<AppState>>) -> boo
     c.library.enabled = enabled;
     let _ = c.save();
     enabled
-}
-
-/// Fetch a page of the skin catalog from Chud's `chud-skins` Worker (which
-/// caches the upstream skin catalog). Backend-side fetch so there's no CORS/UA concern.
-#[tauri::command]
-async fn library_catalog(
-    search: Option<String>,
-    champion: Option<String>,
-    category: Option<String>,
-    page: Option<u32>,
-    state: tauri::State<'_, Arc<AppState>>,
-) -> Result<serde_json::Value, String> {
-    let (endpoint, allowed) = {
-        let c = state.config.lock_safe();
-        (c.library.endpoint.clone(), net::allowed_origins(&c))
-    };
-    let base = endpoint.trim_end_matches('/');
-    let mut params: Vec<(&str, String)> = vec![("page", page.unwrap_or(0).to_string())];
-    if let Some(s) = search.filter(|s| !s.trim().is_empty()) { params.push(("search", s)); }
-    if let Some(c) = champion.filter(|s| !s.trim().is_empty()) { params.push(("champion", c)); }
-    if let Some(c) = category.filter(|s| !s.trim().is_empty()) { params.push(("category", c)); }
-    let http = net::build_external_client(10.0, allowed.clone());
-    let url = reqwest::Url::parse_with_params(&format!("{base}/catalog"), &params).map_err(|e| e.to_string())?;
-    net::get_json_checked(&http, url.as_str(), &allowed, 16 * 1024 * 1024).await
 }
 
 /// Legacy Library download dir (pre-2.0 installs landed here). Kept only so
@@ -1665,7 +1628,6 @@ pub fn run() {
             skins_get_state,
             skins_save_settings,
             skins_set_ack,
-            skins_injection_policy,
             skins_download,
             skins_activate_pengu,
             skins_set_enabled,
@@ -1674,7 +1636,6 @@ pub fn run() {
             skins_catalog,
             skins_get_favorites,
             skins_set_favorite,
-            skins_diagnostics,
             skins_party_enable,
             skins_party_disable,
             skins_party_add_peer,
@@ -1686,7 +1647,6 @@ pub fn run() {
             get_appear_offline,
             library_get,
             set_library_enabled,
-            library_catalog,
             library_catalog_all,
             library_state,
             library_set_favorite,
