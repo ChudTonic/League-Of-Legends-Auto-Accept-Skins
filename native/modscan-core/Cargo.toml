@@ -1,0 +1,17 @@
+[package]
+name = "modscan-core"
+version = "0.1.0"
+description = "Defensive scanner for League of Legends mod archives (.fantome / .zip) — pure Rust, no Tauri/network deps, shared by the Chud app and a standalone CLI"
+authors = ["Joshua P Ivy"]
+edition = "2021"
+
+# Plain rlib + a CLI binary (src/bin/modscan.rs) — no cdylib/staticlib needed,
+# this crate is never loaded as a native plugin.
+[lib]
+name = "modscan_core"
+
+[dependencies]
+zip = "2"
+sha2 = "0.10"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"

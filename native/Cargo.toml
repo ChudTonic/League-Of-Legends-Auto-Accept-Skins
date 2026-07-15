@@ -2,7 +2,7 @@
 # M0 contains only the Tauri shell crate; M1+ may split a `core` lib crate out.
 [workspace]
 resolver = "2"
-members = ["src-tauri"]
+members = ["src-tauri", "modscan-core"]
 
 # Release profile tuned for a small, fast single binary. Must live at the
 # workspace root — Cargo ignores profiles set in member crates.
