@@ -92,7 +92,14 @@ pub async fn download_skins(
     let zip_bytes = download_repo_zip(&client, &mut *progress).await?;
 
     log_info!("[DOWNLOADS] extracting skins, previews, and resources from repository ZIP...");
-    let stats = extract_and_cleanup(zip_bytes, skins_dir, resources_dir)?;
+    // Zip decompression + thousands of file writes is CPU/IO-heavy; run it off
+    // the async runtime so it can't stall latency-sensitive tasks (loadout
+    // ticker, safety monitor) sharing this worker.
+    let skins_dir_owned = skins_dir.to_path_buf();
+    let resources_dir_owned = resources_dir.to_path_buf();
+    let stats = tokio::task::spawn_blocking(move || extract_and_cleanup(zip_bytes, &skins_dir_owned, &resources_dir_owned))
+        .await
+        .map_err(|e| DownloadError::Other(e.to_string()))??;
     log_info!(
         "[DOWNLOADS] extracted {} skin files and {} resource files",
         stats.skin_entries, stats.resource_entries

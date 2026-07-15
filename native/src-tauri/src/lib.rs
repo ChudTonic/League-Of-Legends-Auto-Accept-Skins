@@ -1139,7 +1139,7 @@ async fn scan_downloaded_mod(
     endpoint: &str,
     allowed: &std::collections::HashSet<String>,
     http: &reqwest::Client,
-    bytes: Vec<u8>,
+    bytes: Arc<Vec<u8>>,
     label: &str,
 ) -> ScanSummary {
     use skins::slog::{log_info, log_warn};
@@ -1257,6 +1257,11 @@ pub(crate) async fn place_library_mod(
         return Err(format!("'{name}' isn't available yet (still mirroring) — try again shortly."));
     }
 
+    // Refcount the downloaded bytes: the scan and the announcer-convert both
+    // need a copy, and these can be 512MB — an Arc clone is a pointer bump,
+    // not a data copy, so peak memory stays ~1x instead of 2-3x.
+    let raw_bytes = Arc::new(raw_bytes);
+
     // Scan IN MEMORY before anything below touches disk; a blocking verdict
     // without `force` stops here.
     let summary = scan_downloaded_mod(base, allowed, http, raw_bytes.clone(), name).await;
@@ -1266,7 +1271,7 @@ pub(crate) async fn place_library_mod(
 
     // Announcer packs: retarget the global announcer banks so the pack works on
     // SR, ARAM, and Nexus Blitz — done once at download time, never mid-champ-select.
-    let bytes: Vec<u8> = if category == "announcer" {
+    let converted: Option<Vec<u8>> = if category == "announcer" {
         if let Some(app) = app {
             let _ = app.emit("library-install-phase", json!({ "modId": mod_id, "phase": "converting" }));
         }
@@ -1274,15 +1279,18 @@ pub(crate) async fn place_library_mod(
         let converted = tokio::task::spawn_blocking(move || skins::announcer_fix::retarget_announcer_pack(&original))
             .await
             .map_err(|e| e.to_string())?;
-        match converted {
-            Some(fixed) => fixed,
-            None => {
-                log_warn!("[LIBRARY] announcer pack '{name}' has no global announcer banks - installed as-is");
-                raw_bytes
-            }
+        if converted.is_none() {
+            log_warn!("[LIBRARY] announcer pack '{name}' has no global announcer banks - installed as-is");
         }
+        converted
     } else {
-        raw_bytes
+        None
+    };
+    // Write the retargeted pack if there is one, else the original bytes
+    // (borrowed from the Arc — no copy).
+    let bytes: &[u8] = match &converted {
+        Some(v) => v.as_slice(),
+        None => raw_bytes.as_slice(),
     };
     let size_mb = (bytes.len() as f64) / 1_048_576.0;
 
@@ -1290,7 +1298,7 @@ pub(crate) async fn place_library_mod(
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     let stem = sanitize_mod_filename(name, mod_id);
     let file_name = format!("{stem}.fantome");
-    tokio::fs::write(dir.join(&file_name), &bytes).await.map_err(|e| e.to_string())?;
+    tokio::fs::write(dir.join(&file_name), bytes).await.map_err(|e| e.to_string())?;
     let rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
     log_info!("[LIBRARY] installed '{name}' ({size_mb:.1} MB) -> mods/{rel_file}");
 

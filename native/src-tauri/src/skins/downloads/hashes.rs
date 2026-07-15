@@ -252,12 +252,18 @@ pub async fn ensure_hashes(tools_dir: &Path, progress: Progress<'_>) -> Result<b
         shard_bytes.push(bytes);
     }
 
-    log_info!("[DOWNLOADS] merging hashes files...");
-    let combined = combine_hash_shards(shard_bytes)?;
-
-    log_info!("[DOWNLOADS] writing {TARGET_FILE}...");
-    std::fs::write(&target_path, &combined)?;
-    let size_mb = combined.len() as f64 / (1024.0 * 1024.0);
+    log_info!("[DOWNLOADS] merging hashes files and writing {TARGET_FILE}...");
+    // Merge (~207MB) + write is CPU/IO-heavy; run off the async runtime so it
+    // can't stall latency-sensitive tasks sharing this worker.
+    let write_path = target_path.clone();
+    let combined_len = tokio::task::spawn_blocking(move || -> Result<usize, DownloadError> {
+        let combined = combine_hash_shards(shard_bytes)?;
+        std::fs::write(&write_path, &combined)?;
+        Ok(combined.len())
+    })
+    .await
+    .map_err(|e| DownloadError::Other(e.to_string()))??;
+    let size_mb = combined_len as f64 / (1024.0 * 1024.0);
     log_info!("[DOWNLOADS] successfully created {TARGET_FILE} ({size_mb:.1} MB)");
 
     // Refresh state with the new commit SHAs (best-effort — a failed

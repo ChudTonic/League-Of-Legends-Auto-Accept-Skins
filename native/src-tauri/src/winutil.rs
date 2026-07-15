@@ -21,7 +21,9 @@ pub fn lol_game_focused() -> bool {
         if len <= 0 {
             return false;
         }
-        String::from_utf16_lossy(&buf[..len as usize]) == "RiotWindowClass"
+        // Compare UTF-16 units directly — `hold_loop` calls this up to 50x/s
+        // in-game, so avoid allocating a String per tick.
+        buf[..len as usize].iter().copied().eq("RiotWindowClass".encode_utf16())
     }
 }
 
