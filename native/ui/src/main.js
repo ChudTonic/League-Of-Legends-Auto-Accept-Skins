@@ -98,28 +98,19 @@ function renderNav() {
     </div>`).join("");
   document.querySelectorAll(".nav-item").forEach((el) => (el.onclick = () => navTo(el.dataset.page)));
 }
-let _topSig = null;
+// Client-linked / tools-active / Stop All now live in the dashboard body
+// (see dashboardHtml + patchDashboard); the header only keeps the exit button.
 function renderTop() {
-  const n = state.activeToolCount;
-  const online = state.clientOnline;
-  // The topbar only reflects tool count + client-online — skip the DOM writes
-  // (fired ~1/s via state-changed) when neither changed.
-  const sig = `${n}|${online ? 1 : 0}`;
-  if (sig === _topSig) return;
-  _topSig = sig;
-  const col = n > 0 ? "#33e0a0" : "#6b6b96";
-  const oc = online ? "#33e0a0" : "#6b6b96";
-  const tc = document.getElementById("topClient");
-  tc.style.color = oc; tc.style.borderColor = oc + "55"; tc.style.background = oc + "18";
-  tc.innerHTML = `<span class="slight ${online ? "on" : ""}" style="width:6px;height:6px;background:${oc};color:${oc}"></span>${online ? "Client linked" : "Client offline"}`;
-  const c = document.getElementById("topChip");
-  c.style.color = col; c.style.borderColor = col + "55"; c.style.background = col + "18";
-  c.textContent = `${n} tool${n === 1 ? "" : "s"} active`;
-  const sa = document.getElementById("stopAllTop");
-  sa.style.display = n > 0 ? "" : "none";
-  sa.onclick = onStopAll;
   const ex = document.getElementById("exitIco"); if (ex) ex.innerHTML = ico("power");
-  document.getElementById("exitBtn").onclick = () => invoke("exit_app");
+  const eb = document.getElementById("exitBtn"); if (eb) eb.onclick = () => invoke("exit_app");
+}
+
+// Paint the dashboard's Client-linked chip (shared by first render + patch).
+function paintClientChip(el) {
+  const online = state.clientOnline;
+  const oc = online ? "#33e0a0" : "#6b6b96";
+  el.style.color = oc; el.style.borderColor = oc + "55"; el.style.background = oc + "18";
+  el.innerHTML = `<span class="slight ${online ? "on" : ""}" style="width:6px;height:6px;background:${oc};color:${oc}"></span>${online ? "Client linked" : "Client offline"}`;
 }
 
 // ── Dashboard ────────────────────────────────────────────────────────────────
@@ -218,6 +209,7 @@ function dashboardHtml() {
     </div>
     ${state.injectionAck ? "" : riskstrip()}
     <div class="dash-sec"><span class="section-label">Modules</span><span class="rule"></span>
+      <span class="chip" id="dashClient"></span>
       <button class="btn sm primary" id="startAllBtn">Start All</button>
       <button class="btn sm" id="stopAll2Btn" ${state.activeToolCount > 0 ? "" : "disabled"}>Stop</button>
     </div>
@@ -240,6 +232,7 @@ function wireDash() {
   const sa = document.getElementById("startAllBtn"); if (sa) sa.onclick = onStartAll;
   const sb = document.getElementById("stopAll2Btn"); if (sb) sb.onclick = onStopAll;
   const sh = document.getElementById("stopAllHero"); if (sh) sh.onclick = onStopAll;
+  const dc = document.getElementById("dashClient"); if (dc) paintClientChip(dc);
   document.querySelectorAll("#page [data-admin]").forEach((b) => (b.onclick = () => invoke("request_admin")));
   document.querySelectorAll("#page [data-openbundle]").forEach((b) => (b.onclick = () => window.ChudOpenBundles && window.ChudOpenBundles()));
   document.querySelectorAll("#page [data-feature]").forEach((b) => (b.onclick = () => { if (window.ChudOpenAnnouncers) window.ChudOpenAnnouncers(); else if (window.ChudNavTo) window.ChudNavTo("library"); }));
@@ -1131,6 +1124,7 @@ function patchDashboard() {
   const ht = hero.querySelector(".hero-title"); if (ht) ht.textContent = armed ? (state.clientOnline ? "Queue watcher is live" : "Waiting for the client…") : "Auto-Accept is idle";
   const s = state.summary;
   setVal("lc-session", s.sessionMatches); setVal("lc-total", s.totalMatches); setVal("lc-uptime", s.uptime); setVal("lc-active", state.activeToolCount);
+  const dc = document.getElementById("dashClient"); if (dc) paintClientChip(dc);
   const sh = document.getElementById("stopAllHero"); if (sh) sh.style.display = state.activeToolCount > 0 ? "" : "none";
   if (currentModulesSig() !== modulesSig) {
     const modules = page.querySelector(".modules"); if (modules) modules.innerHTML = state.tools.map(modCard).join("") + featureCardHtml();
