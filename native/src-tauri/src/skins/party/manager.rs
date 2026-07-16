@@ -51,7 +51,6 @@ use crate::skins::injection::zips;
 use crate::skins::lcu_ext;
 use crate::skins::paths;
 use crate::skins::slog::{log_info, log_warn};
-use crate::skins::state::CustomModSelection;
 use crate::skins::SkinsState;
 use crate::LockExt;
 
@@ -137,7 +136,11 @@ struct Inner {
     /// announcer_mod_id) so the 1s tick only sends on an actual change. Also
     /// cleared by `handle_session_established` so a fresh relay session
     /// forces an immediate resend even when the selection is unchanged.
-    last_broadcast: Option<(Option<i64>, Option<i64>, Option<String>, Option<String>)>,
+    /// (champion_id, skin_id, chroma_id, RESOLVED custom-mod hash, announcer
+    /// id) actually broadcast last — recorded only after a confirmed send, and
+    /// keyed on the resolved hash (not the mod path) so a transient hash
+    /// failure re-sends once the file is readable.
+    last_broadcast: Option<(i64, i64, Option<i64>, Option<String>, Option<String>)>,
     /// Library mod-ids of peer announcers we've already started (or
     /// finished) downloading this session — dedups the download trigger
     /// across member-update callbacks.
@@ -575,7 +578,12 @@ impl PartyManager {
                     continue;
                 }
                 current_ids.insert(member.member_id);
-                let selection = if sig_ok.get(&member.member_id).copied() == Some(true) {
+                // Only a signature-verified update is allowed to mutate the
+                // peer's cached selection. When verified, an absent/unparseable
+                // skin is a legitimate DESELECT and must clear the cache
+                // (finding #4); an unverified update leaves the cache untouched.
+                let verified = sig_ok.get(&member.member_id).copied() == Some(true);
+                let selection = if verified {
                     member.skin.as_ref().and_then(parse_skin_selection)
                 } else {
                     None
@@ -587,7 +595,7 @@ impl PartyManager {
                         peer.pubkey = member.pubkey.clone();
                         peer.connected = true;
                         peer.connection_state = "connected";
-                        if selection.is_some() {
+                        if verified {
                             peer.skin_selection = selection;
                         }
                     }
@@ -839,25 +847,31 @@ impl PartyManager {
         let (Some(champion_id), Some(skin_id)) = (champion_id, skin_id) else { return };
 
         let announcer = self.my_library_announcer();
-        let custom_mod_key = custom_mod.as_ref().map(|m| m.relative_path.clone());
-        let announcer_key = announcer.as_ref().map(|(id, _)| id.clone());
-        let changed = {
-            let mut inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
+        // Resolve the custom-mod content hash HERE so the change-key reflects
+        // whether it actually resolved (finding #3): a transient hash failure
+        // must not be recorded as if the custom fields went out, or the real
+        // signed custom pick would never be re-sent.
+        let custom_hash = custom_mod.as_ref().and_then(|m| hash_custom_mod(&m.relative_path));
+        let announcer_id = announcer.as_ref().map(|(id, _)| id.clone());
+
+        // Change-key: champion_id included (finding #5) + the resolved hash.
+        let key = (champion_id, skin_id, chroma_id, custom_hash.clone(), announcer_id);
+        {
+            let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             if !inner.enabled {
                 return;
             }
-            let current = (Some(skin_id), chroma_id, custom_mod_key, announcer_key);
-            let changed = inner.last_broadcast.as_ref() != Some(&current);
-            if changed {
-                inner.last_broadcast = Some(current);
+            if inner.last_broadcast.as_ref() == Some(&key) {
+                return; // unchanged
             }
-            changed
-        };
-        if !changed {
-            return;
         }
 
-        self.broadcast_skin_update(champion_id, skin_id, chroma_id, custom_mod.as_ref(), announcer);
+        // Only record last_broadcast once the send actually happened (finding
+        // #2): committing before confirming could silently drop a pick made
+        // during a connect/reconnect gap.
+        if self.broadcast_skin_update(champion_id, skin_id, chroma_id, custom_hash, announcer) {
+            self.inner.lock().unwrap_or_else(|e| e.into_inner()).last_broadcast = Some(key);
+        }
     }
 
     /// The selected announcer, resolved to its Library install record —
@@ -877,33 +891,33 @@ impl PartyManager {
     /// ephemeral session key, bound to the relay's current
     /// `(epoch, member_id)` — with no session yet, this skips silently and
     /// `handle_session_established` retries on the next tick.
+    /// Returns `true` only if the selection actually went out (live relay +
+    /// session + signing key). `custom_hash` is the ALREADY-resolved content
+    /// hash (or `None`), so this never silently degrades a custom pick.
     fn broadcast_skin_update(
         &self,
         champion_id: i64,
         skin_id: i64,
         chroma_id: Option<i64>,
-        custom_mod: Option<&CustomModSelection>,
+        custom_hash: Option<String>,
         announcer: Option<(String, String)>,
-    ) {
+    ) -> bool {
         let (relay, signing) = {
             let inner = self.inner.lock().unwrap_or_else(|e| e.into_inner());
             (inner.relay.clone(), inner.signing.clone())
         };
-        let Some(relay) = relay else { return };
+        let Some(relay) = relay else { return false };
         if !relay.connected() {
-            return;
+            return false;
         }
-        let Some((member_id, epoch)) = relay.session() else { return };
-        let Some(signing) = signing else { return };
+        let Some((member_id, epoch)) = relay.session() else { return false };
+        let Some(signing) = signing else { return false };
 
         let mut skin = json!({"champion_id": champion_id, "skin_id": skin_id, "chroma_id": chroma_id});
-        let mut hash_field = "-".to_string();
-        if let Some(mod_sel) = custom_mod {
-            if let Some(hash) = hash_custom_mod(&mod_sel.relative_path) {
-                skin["custom_mod_hash"] = json!(hash);
-                skin["is_custom"] = json!(true);
-                hash_field = hash;
-            }
+        let hash_field = custom_hash.clone().unwrap_or_else(|| "-".to_string());
+        if let Some(hash) = &custom_hash {
+            skin["custom_mod_hash"] = json!(hash);
+            skin["is_custom"] = json!(true);
         }
         let mut announcer_field = "-".to_string();
         if let Some((mod_id, name)) = announcer {
@@ -918,6 +932,7 @@ impl PartyManager {
 
         log_info!("[SKIN_SEND] Broadcasting our pick: champion {champion_id}, skin {skin_id}, chroma {chroma_id:?}");
         relay.send_skin(Some(skin));
+        true
     }
 
     // ─── Party skins for injection ──────────────────────────────────────
@@ -1144,21 +1159,34 @@ impl PartyManager {
     /// roster gate — see `get_party_skins`). `None` when the champ-select
     /// session isn't available — the caller fails closed on that.
     async fn live_roster_champion_ids(&self) -> Option<HashSet<i64>> {
-        let auth = lcu::cached_auth()?;
-        let session = lcu_ext::champ_select_session(&self.http_client, &auth).await?;
-        let my_cell = session.local_player_cell_id;
-        let mut ids = HashSet::new();
-        for cell in session.my_team.unwrap_or_default() {
-            if cell.cell_id == my_cell {
-                continue; // exclude myself
-            }
-            if let Some(cid) = cell.champion_id {
-                if cid > 0 {
-                    ids.insert(cid);
+        // Retry: the LCU is often briefly unresponsive at the loadout deadline
+        // (phase transition, lockfile rotation) — exactly when this runs. A
+        // single failed call would drop EVERY peer's verified skin for the
+        // whole match, so retry a few times before treating it as unavailable.
+        for attempt in 0..3 {
+            if let Some(auth) = lcu::cached_auth() {
+                if let Some(session) = lcu_ext::champ_select_session(&self.http_client, &auth).await {
+                    let my_cell = session.local_player_cell_id;
+                    let mut ids = HashSet::new();
+                    for cell in session.my_team.unwrap_or_default() {
+                        if cell.cell_id == my_cell {
+                            continue; // exclude myself
+                        }
+                        if let Some(cid) = cell.champion_id {
+                            if cid > 0 {
+                                ids.insert(cid);
+                            }
+                        }
+                    }
+                    return Some(ids);
                 }
             }
+            lcu::invalidate_auth();
+            if attempt < 2 {
+                tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+            }
         }
-        Some(ids)
+        None
     }
 }
 
@@ -1355,6 +1383,70 @@ mod tests {
 
         let missing_skin_id = json!({"champion_id": 103});
         assert!(parse_skin_selection(&missing_skin_id).is_none());
+    }
+
+    // Build a selection blob EXACTLY as broadcast_skin_update serializes it,
+    // then verify it through the receive path (verify_member_skin). This locks
+    // the send/receive field conventions together: if one half changes how it
+    // encodes chroma/hash/announcer defaults, the signature stops verifying and
+    // peer skins silently vanish — precisely the class of bug we shipped.
+    fn signed_wire_selection(
+        key: &ed25519_dalek::SigningKey,
+        epoch: &str,
+        member_id: u64,
+        champion_id: i64,
+        skin_id: i64,
+        chroma_id: Option<i64>,
+        custom_hash: Option<&str>,
+        announcer: Option<(&str, &str)>,
+    ) -> Value {
+        // Mirror of broadcast_skin_update's assembly.
+        let mut skin = json!({"champion_id": champion_id, "skin_id": skin_id, "chroma_id": chroma_id});
+        let hash_field = custom_hash.unwrap_or("-").to_string();
+        if let Some(h) = custom_hash {
+            skin["custom_mod_hash"] = json!(h);
+            skin["is_custom"] = json!(true);
+        }
+        let mut announcer_field = "-".to_string();
+        if let Some((mod_id, name)) = announcer {
+            skin["announcer_mod_id"] = json!(mod_id);
+            skin["announcer_name"] = json!(name);
+            announcer_field = mod_id.to_string();
+        }
+        let chroma = chroma_id.unwrap_or(-1);
+        let sig_hex = sig::sign_selection(key, epoch, member_id, champion_id, skin_id, chroma, &hash_field, &announcer_field);
+        skin["sig"] = json!(sig_hex);
+        skin
+    }
+
+    #[test]
+    fn send_and_receive_conventions_agree() {
+        use ed25519_dalek::SigningKey;
+        use rand::rngs::OsRng;
+        let key = SigningKey::generate(&mut OsRng);
+        let pubkey = sig::to_hex(&key.verifying_key().to_bytes());
+        let epoch = "deadbeefdeadbeef";
+        let member_id: u64 = 424242;
+
+        // Plain skin, no chroma/custom/announcer — the common case, and the one
+        // whose chroma_id:null encoding broke the relay before.
+        let blob = signed_wire_selection(&key, epoch, member_id, 84, 84007, None, None, None);
+        let member = RelayMember { member_id, name: "Peer".into(), pubkey: pubkey.clone(), skin: Some(blob.clone()) };
+        assert!(verify_member_skin(epoch, &member, &blob), "plain selection must verify end-to-end");
+
+        // With chroma + custom hash + announcer — every optional field populated.
+        let blob2 = signed_wire_selection(
+            &key, epoch, member_id, 103, 103000, Some(103001), Some("deadbeef"), Some(("pack/foo", "Foo")),
+        );
+        let member2 = RelayMember { member_id, name: "Peer".into(), pubkey: pubkey.clone(), skin: Some(blob2.clone()) };
+        assert!(verify_member_skin(epoch, &member2, &blob2), "fully-populated selection must verify end-to-end");
+
+        // A tampered relay (swapped skin_id) must fail — the signature is the
+        // only thing standing between a peer and a spoofed selection.
+        let mut tampered = blob2.clone();
+        tampered["skin_id"] = json!(999999);
+        let member3 = RelayMember { member_id, name: "Peer".into(), pubkey, skin: Some(tampered.clone()) };
+        assert!(!verify_member_skin(epoch, &member3, &tampered), "tampered selection must be rejected");
     }
 
     #[test]
