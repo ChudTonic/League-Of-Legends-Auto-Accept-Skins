@@ -125,7 +125,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
             mod_path: String::new(),
             relative_path: String::new(),
         });
-        run_custom_mod_injection(&app, &skins, &injection, custom, &category_mods, None, None, champion_name.clone(), &party_mgr).await;
+        run_custom_mod_injection(&app, &skins, &injection, custom, &category_mods, None, None, None, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -201,7 +201,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
         } else {
             log_info!("[INJECT] Custom mod selected for unowned skin {target_skin_id}, injecting base skin ZIP + custom mod");
         }
-        run_custom_mod_injection(&app, &skins, &injection, custom_mod.clone(), &category_mods, base_skin_name, None, champion_name.clone(), &party_mgr).await;
+        run_custom_mod_injection(&app, &skins, &injection, custom_mod.clone(), &category_mods, base_skin_name, None, ui_skin_id, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -220,7 +220,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
             mod_path: String::new(),
             relative_path: String::new(),
         };
-        run_custom_mod_injection(&app, &skins, &injection, dummy, &category_mods, base_skin_name, chroma_for_inject, champion_name.clone(), &party_mgr).await;
+        run_custom_mod_injection(&app, &skins, &injection, dummy, &category_mods, base_skin_name, chroma_for_inject, None, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -503,6 +503,11 @@ async fn run_custom_mod_injection(
     category_mods: &CategoryModSelections,
     base_skin_name: Option<String>,
     chroma_id: Option<i64>,
+    // The skin the user has selected in champ select. Library custom mods are
+    // all filed under the base folder, so `custom_mod.skin_id` can't tell us
+    // which skin slot the mod's art actually targets — the user's own pick is
+    // the reliable signal (they pick the skin the mod is built for).
+    user_skin_id: Option<i64>,
     champion_name: String,
     party_mgr: &Option<Arc<crate::skins::party::manager::PartyManager>>,
 ) {
@@ -602,7 +607,11 @@ async fn run_custom_mod_injection(
             let force_skin_id = if has_custom_skin_folder && custom_mod.skin_id % 1000 != 0 {
                 custom_mod.skin_id
             } else {
-                cid * 1000
+                // Library custom mods all sit in the base folder, so fall back
+                // to the skin the user actually selected — a Primordian-keyed
+                // mod needs the game loaded on Primordian, not base (else it
+                // renders base and the user has to switch skins by hand).
+                user_skin_id.filter(|&id| id % 1000 != 0).unwrap_or(cid * 1000)
             };
             force_base_skin(&client, &auth, local_cell, force_skin_id, random_active).await;
         }
