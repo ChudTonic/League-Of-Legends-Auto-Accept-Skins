@@ -1656,6 +1656,12 @@ fn library_set_auto_update(on: bool, state: tauri::State<Arc<AppState>>) -> bool
 /// category is a flat root folder the in-client wheel reads via
 /// `list_mods_for_category`. Returns `None` for champion skins (handled
 /// separately since they need the resolved champion id).
+/// Categories that are never tied to one champion (game-wide) — these stay in
+/// their flat category folder even when a champion happens to be attached.
+/// Everything else (vfx/sfx/voiceover/loading_screen/ui/other), when it carries
+/// a champion, is filed as a per-champion custom mod instead.
+const CATEGORY_ALWAYS_GLOBAL: [&str; 3] = ["map_skin", "announcer", "font"];
+
 fn library_category_dir(category: &str) -> Option<&'static str> {
     match category {
         "map_skin" => Some("maps"),
@@ -1669,6 +1675,49 @@ fn library_category_dir(category: &str) -> Option<&'static str> {
         "miscellaneous" | "other" | "others" => Some("others"),
         _ => None, // champion_skin (and unknown) -> skins/{champ*1000}
     }
+}
+
+/// One-time (idempotent) migration: custom cosmetics that were installed under a
+/// flat category folder (vfx/sfx/…) but belong to a champion get moved into that
+/// champ's `skins/{champ*1000}` folder, so they become selectable per-champion
+/// custom mods (they show in the overlay's chroma bar instead of being stranded
+/// in the Other tab). Returns true if any record changed (caller saves config).
+fn migrate_champion_category_mods(cfg: &mut config::Config) -> bool {
+    use skins::slog::{log_info, log_warn};
+    const MOVABLE: [&str; 6] = ["vfx", "sfx", "voiceover", "loading_screen", "ui", "others"];
+    let mods_root = skins::paths::mods_dir();
+    let mut changed = false;
+    for rec in cfg.library.installed.values_mut() {
+        if rec.champ.trim().is_empty() {
+            continue;
+        }
+        let Some((folder, filename)) = rec.file.split_once('/') else { continue };
+        if !MOVABLE.contains(&folder) {
+            continue;
+        }
+        let Some(cid) = resolve_champ_id_by_name(&rec.champ) else { continue };
+        let new_rel = format!("skins/{}/{}", cid * 1000, filename);
+        let src = mods_root.join(&rec.file);
+        let dst = mods_root.join(&new_rel);
+        if !src.exists() {
+            // File already gone/moved — just correct the record so it lists.
+            rec.file = new_rel;
+            changed = true;
+            continue;
+        }
+        if let Some(parent) = dst.parent() {
+            let _ = std::fs::create_dir_all(parent);
+        }
+        match std::fs::rename(&src, &dst) {
+            Ok(()) => {
+                log_info!("[MIGRATE] {} -> mods/{new_rel}", rec.file);
+                rec.file = new_rel;
+                changed = true;
+            }
+            Err(e) => log_warn!("[MIGRATE] could not move {}: {e}", rec.file),
+        }
+    }
+    changed
 }
 
 /// ModScan result surfaced to the UI before a downloaded mod is written to disk
@@ -1808,7 +1857,17 @@ pub(crate) async fn place_library_mod(
     use skins::slog::{log_info, log_warn};
     // Resolve the destination folder (relative to mods/) by category.
     let rel_dir: std::path::PathBuf = match library_category_dir(category) {
-        Some(cat_dir) => std::path::PathBuf::from(cat_dir),
+        // A champion-specific cosmetic (a chroma, or a skin-variant VFX/SFX/etc.)
+        // carries a champion — file it under that champ's skins folder so it's a
+        // selectable per-champion custom mod (shows in the chroma bar), not a
+        // stranded global category mod. Global categories (maps/fonts/announcers)
+        // never carry a champion, so they stay in their flat folder.
+        Some(cat_dir) => match champ_id.filter(|&id| id > 0).or_else(|| resolve_champ_id_by_name(champ)) {
+            Some(cid) if !CATEGORY_ALWAYS_GLOBAL.contains(&category) => {
+                std::path::PathBuf::from("skins").join((cid * 1000).to_string())
+            }
+            _ => std::path::PathBuf::from(cat_dir),
+        },
         None => {
             let cid = champ_id.filter(|&id| id > 0).or_else(|| resolve_champ_id_by_name(champ)).ok_or_else(|| {
                 log_warn!("[LIBRARY] no champion resolved for skin mod '{name}' (champ='{champ}')");
@@ -2406,6 +2465,16 @@ pub fn run() {
             if st.config.lock_safe().auto_accept.enabled {
                 st.running.store(true, Ordering::SeqCst);
                 spawn_auto_accept(&handle, st.clone());
+            }
+
+            // Move champion-tagged cosmetics (chromas/VFX) that were installed
+            // into flat category folders into the champ's skins folder, so they
+            // surface as selectable custom mods in the chroma bar.
+            {
+                let mut cfg = st.config.lock_safe();
+                if migrate_champion_category_mods(&mut cfg) {
+                    let _ = cfg.save();
+                }
             }
 
             // Rune/build auto-import watcher (inert until enabled + a Worker

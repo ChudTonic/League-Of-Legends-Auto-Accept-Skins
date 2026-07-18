@@ -437,7 +437,9 @@ function renderSkinsPanel() {
 // Your own .fantome mods for this champ (violet pills below the grid).
 function renderCustomBar() {
   const bar = document.getElementById("custombar");
-  if (!champId || !customMods.length) { bar.style.display = "none"; return; }
+  // Once a skin is picked, custom mods appear in the chroma bar (as variants of
+  // that skin) — so this bar only shows pre-pick, to apply a custom skin directly.
+  if (!champId || !customMods.length || pickId) { bar.style.display = "none"; return; }
   bar.innerHTML = `<span class="cmlbl">Your mods:</span>` + customMods.map((m) =>
     `<span class="cmod${customMod && m.modName === customMod ? " on" : ""}" data-cmod="${esc(m.relativePath)}" data-cskin="${m.skinId}" data-hasprev="${m.hasPreview ? 1 : 0}" title="${esc(m.description || m.modName)}">${esc(m.modName)}</span>`
   ).join("");
@@ -470,20 +472,31 @@ function renderFormBar() {
 function renderChromaBar() {
   const cbar = document.getElementById("chromabar");
   const sel = skinsList.find((s) => s.skinId === pickId);
-  if (sel && sel.chromas && sel.chromas.length) {
-    const baseOn = chromaId == null;
-    cbar.innerHTML = `<span class="cbnm">◈ ${esc(sel.skinName)} — chroma</span>
+  if (!sel) { cbar.style.display = "none"; return; }
+  let html = "";
+  // Official Riot chromas for the picked skin.
+  if (sel.chromas && sel.chromas.length) {
+    const baseOn = chromaId == null && !customMod;
+    html += `<span class="cbnm">◈ ${esc(sel.skinName)} — chroma</span>
       <div class="cbpills">
         <span class="chr${baseOn ? " on" : ""}" data-skin="${sel.skinId}" data-chroma="" title="Base skin">Base</span>
         ${sel.chromas.map((c, i) => `<span class="chrsw${chromaId === c.id ? " on" : ""}" data-skin="${sel.skinId}" data-chroma="${c.id}" title="${esc(c.name)}" style="${swatchStyle(c.colors)}"><b>${i + 1}</b></span>`).join("")}
       </div>`;
-    cbar.style.display = "block";
-  } else if (sel) {
-    cbar.innerHTML = `<span class="cbnm">${esc(sel.skinName)}</span><span class="cbnone">No chromas for this skin</span>`;
-    cbar.style.display = "block";
-  } else {
-    cbar.style.display = "none";
   }
+  // Installed custom chromas / mods for this champion (violet) — a custom
+  // .fantome overlaid on the picked skin. Same data as the "Your mods" bar,
+  // surfaced here so it reads as a variant of the selected skin.
+  if (customMods.length) {
+    html += `<span class="cbnm cbcustom">✦ Custom${sel.chromas && sel.chromas.length ? "" : " — " + esc(sel.skinName)}</span>
+      <div class="cbpills">
+        ${customMods.map((m) => `<span class="ccustom${customMod && m.modName === customMod ? " on" : ""}" data-cmod="${esc(m.relativePath)}" data-cskin="${m.skinId}" data-hasprev="${m.hasPreview ? 1 : 0}" title="${esc(m.description || m.modName)}">${esc(m.modName)}</span>`).join("")}
+      </div>`;
+  }
+  if (!html) {
+    html = `<span class="cbnm">${esc(sel.skinName)}</span><span class="cbnone">No chromas for this skin</span>`;
+  }
+  cbar.innerHTML = html;
+  cbar.style.display = "block";
 }
 
 // Active random-roll / custom-mod / historic-restore indicator — priority
@@ -874,7 +887,7 @@ document.addEventListener("click", async (e) => {
 const cpreview = document.getElementById("cpreview");
 document.addEventListener("mouseover", (e) => {
   const chromaPill = e.target.closest("#chromabar [data-chroma]");
-  const customPill = e.target.closest("#custombar [data-cmod]");
+  const customPill = e.target.closest("[data-cmod]");
   const img = cpreview.querySelector("img");
   const nm = cpreview.querySelector(".pvnm");
   if (chromaPill) {
