@@ -59,6 +59,13 @@ const MAX_NEST_DEPTH: usize = 4;
 /// truncated (fails to parse) and flagged, never fully expanded.
 const NESTED_MAX_BYTES: u64 = 64 * 1024 * 1024;
 
+/// Global ceiling on ACTUAL bytes decompressed across the whole scan (not
+/// per-entry). Without it, up to `MAX_ENTRIES` nested-archive members ×
+/// `NESTED_MAX_BYTES` would force terabytes of real inflation — a scanner DoS.
+/// Legit cosmetic mods read only a few KiB per entry, so this only ever trips a
+/// decompression bomb, after which remaining entries are metadata-checked only.
+const MAX_TOTAL_DECOMPRESSED: u64 = 1024 * 1024 * 1024; // 1 GiB
+
 /// Cap on how many `unexpected-content` findings we emit for one archive.
 /// A mod pack with a thousand stray files shouldn't turn into a thousand
 /// findings — group by extension and stop after this many groups.
@@ -229,6 +236,10 @@ fn scan_bytes_depth(data: &[u8], depth: usize) -> ScanReport {
 
     let mut total_uncompressed: u64 = 0;
     let mut total_uncompressed_exceeded = false;
+    // Actual bytes decompressed by content reads so far, and a latch once the
+    // global budget trips — bounds total scan CPU (see MAX_TOTAL_DECOMPRESSED).
+    let mut total_decompressed: u64 = 0;
+    let mut decompression_budget_hit = false;
 
     // Grouped by extension so a pack with hundreds of stray files produces
     // a handful of findings, not one per file.
@@ -346,11 +357,24 @@ fn scan_bytes_depth(data: &[u8], depth: usize) -> ScanReport {
         let mut disguised = false;
         let mut nested_by_magic = false;
         let mut content: Vec<u8> = Vec::new();
-        if !is_dir {
+        if !is_dir && !decompression_budget_hit {
             let read_cap: u64 = if nested_by_ext { NESTED_MAX_BYTES } else { POLYGLOT_SCAN_BYTES as u64 };
+            // Clamp to the remaining GLOBAL decompression budget so the whole
+            // scan can't be forced into terabytes of inflation across entries.
+            let read_cap = read_cap.min(MAX_TOTAL_DECOMPRESSED.saturating_sub(total_decompressed));
             let mut limited = (&mut entry).take(read_cap);
             match limited.read_to_end(&mut content) {
                 Ok(_) => {
+                    total_decompressed += content.len() as u64;
+                    if total_decompressed >= MAX_TOTAL_DECOMPRESSED {
+                        decompression_budget_hit = true;
+                        findings.push(Finding::new(
+                            Severity::Suspicious,
+                            "scan-budget-exceeded",
+                            None,
+                            format!("archive forced past the {MAX_TOTAL_DECOMPRESSED}-byte decompression budget — remaining entries were not content-scanned"),
+                        ));
+                    }
                     // Disguise at offset 0 (e.g. a PE named `.dds`).
                     if let Some(kind) = sniff_executable_magic(&content) {
                         disguised = true;

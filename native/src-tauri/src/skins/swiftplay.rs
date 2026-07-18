@@ -86,6 +86,16 @@ pub async fn on_lobby_entered(app: AppHandle, skins: Arc<SkinsState>) {
         }
         log_info!("[swiftplay] Lobby - Game mode: {:?}, Map ID: {:?}", mode.game_mode, mode.map_id);
 
+        // New-game prep: clear the per-game injection gates every time we're in
+        // the Swiftplay lobby (the lobby is only seen BETWEEN games, incl. "play
+        // again"), or games after the first never re-inject. The champ lock is
+        // re-applied from live lobby data just below, so this only re-arms.
+        {
+            let mut rt = runtime().lock_safe();
+            rt.injection_triggered = false;
+            rt.overlay_done = false;
+        }
+
         if let Some(sel) = lcu_ext::get_swiftplay_champion_selection(&client, &auth).await {
             apply_champion_selection(&skins, sel);
         }

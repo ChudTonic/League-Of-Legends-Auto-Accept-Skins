@@ -340,9 +340,13 @@ async function renderSettings() {
     const s = b.dataset.sec, k = b.dataset.key; cfg[s] = cfg[s] || {}; cfg[s][k] = b.dataset.val;
     b.parentElement.querySelectorAll(".seg-btn").forEach((x) => x.classList.toggle("on", x === b));
   }));
-  p.querySelectorAll(".tog[data-sec]").forEach((t) => (t.onclick = () => {
+  p.querySelectorAll(".tog[data-sec]").forEach((t) => (t.onclick = async () => {
     const s = t.dataset.sec, k = t.dataset.key; cfg[s] = cfg[s] || {}; cfg[s][k] = !cfg[s][k];
     t.classList.toggle("on", cfg[s][k]);
+    // The risk-ack is also set from the dashboard; persist it via its dedicated
+    // command so the two stay in sync and a later Save can't revert it (the
+    // backend now preserves injection_ack across save_config).
+    if (s === "safety" && k === "injection_ack") { try { await invoke("set_injection_ack", { accepted: cfg[s][k] }); } catch {} }
   }));
   document.getElementById("saveCfg").onclick = async () => {
     await invoke("save_config", { cfg });

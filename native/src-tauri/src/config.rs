@@ -299,7 +299,7 @@ impl Config {
     /// config value can't self-lock the app: the safety monitor fails injection
     /// closed on any snapshot older than 15s, so an oversized `safety.check_interval`
     /// would wedge it shut; `auto_accept.check_interval` is bounded on the low end too.
-    fn clamp_intervals(&mut self) {
+    pub(crate) fn clamp_intervals(&mut self) {
         self.safety.check_interval = self.safety.check_interval.clamp(1.0, 10.0);
         self.auto_accept.check_interval = self.auto_accept.check_interval.clamp(0.2, 10.0);
     }

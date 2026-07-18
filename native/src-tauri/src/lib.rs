@@ -321,6 +321,19 @@ fn save_config(cfg: serde_json::Value, app: AppHandle, state: tauri::State<Arc<A
                 parsed.library = c.library.clone();
                 parsed.presence = c.presence.clone();
                 parsed.skins = c.skins.clone();
+                // Also owned by dedicated commands: the risk-ack (`set_injection_ack`,
+                // also fired from the dashboard), the skins consent version, all of
+                // party (`skins_party_*`), and the Auto-Accept arm toggle
+                // (`toggle_tool`). A stale general-settings snapshot must not revert
+                // these. block_in_ranked / auto_accept tunables stay owned by this page.
+                parsed.safety.injection_ack = c.safety.injection_ack;
+                parsed.safety.skins_ack_version = c.safety.skins_ack_version;
+                parsed.party = c.party.clone();
+                parsed.auto_accept.enabled = c.auto_accept.enabled;
+                // Same clamp `Config::load` applies, so a bad interval can't be
+                // persisted (a stale/oversized monitor interval fails injection
+                // closed and would otherwise wedge the safety monitor).
+                parsed.clamp_intervals();
                 *c = parsed;
                 let _ = c.save();
             }
@@ -789,6 +802,11 @@ async fn skins_pick_skin(
         // would be silently ignored while the toggle stays on for next game.
         shared.historic_mode_active = false;
         shared.historic_selection = None;
+        // Picking a normal skin/chroma supersedes an active custom mod — without
+        // this, a custom mod picked earlier stays selected and the injector
+        // forces this skin while overlaying the (different) custom mod, so the
+        // mod silently no-ops. Last pick wins.
+        shared.selected_custom_mod = None;
         shared.manual_pick_this_session = true;
         shared.local_cell_id
     };
@@ -1703,6 +1721,13 @@ fn migrate_champion_category_mods(cfg: &mut config::Config) -> bool {
             // File already gone/moved — just correct the record so it lists.
             rec.file = new_rel;
             changed = true;
+            continue;
+        }
+        // Never clobber: `fs::rename` overwrites an existing destination on
+        // Windows, so a name collision (two mods → same champ + filename) would
+        // silently destroy the first. Leave this one in place instead.
+        if dst.exists() {
+            log_warn!("[MIGRATE] not moving {} — mods/{new_rel} already exists (name collision)", rec.file);
             continue;
         }
         if let Some(parent) = dst.parent() {
