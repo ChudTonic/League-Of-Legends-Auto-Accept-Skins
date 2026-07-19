@@ -234,18 +234,29 @@ pub fn mk_run_overlay(
             return Ok(124);
         }
     };
-    let _ = stdout_thread.join();
-    let _ = stderr_thread.join();
+    let mut mk_output = stdout_thread.join().unwrap_or_default();
+    mk_output.extend(stderr_thread.join().unwrap_or_default());
 
     let mkoverlay_duration = mkoverlay_start.elapsed();
 
     if !status.success() {
         let code = status.code().unwrap_or(1);
         log_error!("[INJECT] mkoverlay failed with return code: {code}");
+        // Surface mkoverlay's own diagnostics — the reason ("Not valid mod!",
+        // a conflicting entry, etc.) is otherwise lost.
+        for line in &mk_output {
+            log_error!("[INJECT]   mkoverlay: {line}");
+        }
         cleanup_failed_build(mods_dir, overlay_dir);
         return Ok(code);
     }
 
+    // Log which WADs mkoverlay wrote — confirms the overlay carried the expected
+    // mods (e.g. the loadscreen card's champion WAD) and catches a runaway
+    // full-game rebuild by the sheer number of "Writing wad" lines.
+    for line in mk_output.iter().filter(|l| l.contains("Writing wad") || l.contains("[WRN]") || l.contains("[ERR]")) {
+        log_info!("[INJECT]   mkoverlay: {}", line.trim());
+    }
     log_info!("[INJECT] mkoverlay completed in {:.2}s", mkoverlay_duration.as_secs_f64());
 
     // Build finished, but if the safety net released the game meanwhile

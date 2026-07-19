@@ -250,11 +250,18 @@ pub async fn build(
     let wad_root = mod_root
         .join("WAD")
         .join(format!("{champ_alias}.wad.client"));
-    let base_tex = base_tex_path(champ_key);
     let mut targets = vec![inner_tex.clone()];
-    if num != 0 && base_tex != inner_tex {
-        targets.push(base_tex);
+    if num != 0 {
+        targets.push(base_tex_path(champ_key));
     }
+    // The game can load the low-end ("_le") variant of a loadscreen (present for
+    // some skins) instead of the full-res one — if we don't override that too,
+    // the label silently doesn't show. Adding an `_le` for a skin that lacks one
+    // is harmless (verified: mkoverlay still builds a single champion WAD).
+    let le: Vec<String> = targets.iter().map(|p| p.replace(".tex", "_le.tex")).collect();
+    targets.extend(le);
+    targets.sort();
+    targets.dedup();
     let mut wrote = 0;
     for rel in &targets {
         let dest = wad_root.join(rel.replace('/', std::path::MAIN_SEPARATOR_STR));
