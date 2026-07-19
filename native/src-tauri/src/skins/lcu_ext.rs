@@ -396,11 +396,11 @@ impl ChampionSkinCache {
     }
 }
 
-/// For the loadscreen-name card: the champion's internal `alias` (e.g.
-/// `MonkeyKing` for Wukong — used as the WAD folder name and, lowercased, the
-/// CommunityDragon key) plus the display name of skin `skin_id`. Both come from
-/// one cached game-data fetch. `None` if the client can't answer or the skin
-/// isn't found (a chroma id won't match a skin — pass the parent skin id).
+/// For the loadscreen-name label: the champion's **display name** (e.g. "Wukong",
+/// "Aatrox" — the exact string the loading-screen label / `lol.stringtable` keys
+/// on) plus the display name of skin `skin_id`. Both come from one cached
+/// game-data fetch. `None` if the client can't answer or the skin isn't found (a
+/// chroma id won't match a skin — pass the parent skin id).
 pub async fn loadscreen_target(
     client: &reqwest::Client,
     auth: &Auth,
@@ -410,14 +410,14 @@ pub async fn loadscreen_target(
     let endpoint = format!("/lol-game-data/assets/v1/champions/{champion_id}.json");
     let value = shared_cache().get(client, auth, &endpoint, DEFAULT_CACHE_TTL).await?;
     let parsed = serde_json::from_value::<ChampionData>(value).ok()?;
-    let alias = parsed.alias.filter(|a| !a.is_empty())?;
+    let champ_display = parsed.name.clone().filter(|n| !n.is_empty())?;
     let skin_name = parsed
         .skins
         .unwrap_or_default()
         .into_iter()
         .find(|s| s.id == Some(skin_id))
         .and_then(|s| s.name.filter(|n| !n.is_empty()))?;
-    Some((alias, skin_name))
+    Some((champ_display, skin_name))
 }
 
 /// Scrape all skins for `champion_id`, trying the game-data endpoint first

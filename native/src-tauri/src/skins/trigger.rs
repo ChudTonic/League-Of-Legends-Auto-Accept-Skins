@@ -241,10 +241,12 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
     // Stage party-member skins now (cleans the mods dir first so they survive)
     // and fold them into the overlay for both the owned and unowned paths.
     let mut party_folders = stage_party_mods(&party_mgr).await;
-    // Bake the skin-name card onto the loadscreen. `stage_party_mods` only
-    // cleaned the mods dir when it had peers to stage, so tell the helper whether
+    // Fix the loading-screen name for UNOWNED skins (force-loaded as base SkinID 0);
+    // owned skins run as their real SkinID so Riot's label already shows the name.
+    // `stage_party_mods` only cleaned the mods dir when it had peers, so pass whether
     // that clean already happened.
-    if let Some(card) = stage_loadscreen_card(&app, &skins, ui_skin_id, champ_id, !party_folders.is_empty()).await {
+    let unowned = effective_skin_id != 0 && !owned_skin_ids.contains(&effective_skin_id);
+    if let Some(card) = stage_loadscreen_card(&app, &skins, ui_skin_id, champ_id, unowned, !party_folders.is_empty()).await {
         party_folders.push(card);
     }
 
@@ -297,22 +299,29 @@ async fn stage_party_mods(party_mgr: &Option<Arc<crate::skins::party::manager::P
 /// helper the caller has NOT cleaned yet (no party staging happened), so it
 /// cleans before writing — otherwise the primary-skin extract that follows would
 /// see non-empty extras, skip its own clean, and leak stale mods.
+/// Repoint the champion's name to the skin name in the localized string table so
+/// the game's SkinID-0 loading-screen label reads the skin name. Only meaningful
+/// for UNOWNED skins — those are force-loaded as base (SkinID 0); owned skins run
+/// as their real SkinID and Riot's label already shows the skin name, so the
+/// caller passes `unowned=false` and we skip. `mods_dir_clean` follows the same
+/// clean-ordering contract as the party mods (clean before staging when nothing
+/// else did).
 async fn stage_loadscreen_card(
     app: &AppHandle,
     skins: &Arc<SkinsState>,
     ui_skin_id: Option<i64>,
     champ_id: Option<i64>,
+    unowned: bool,
     mods_dir_clean: bool,
 ) -> Option<String> {
-    // Diagnostic: the skin id the trigger snapshotted vs. a fresh read taken
-    // right now. A divergence means the user's last-second re-pick landed after
-    // the snapshot (the "spam-click → card shows base" report) — so we can tell
-    // a stale snapshot apart from a name-resolution bug purely from the logs.
     let fresh_hovered = skins.shared.lock_safe().last_hovered_skin_id;
     log_info!(
-        "[LOADSCREEN] stage: snapshot_skin={ui_skin_id:?} fresh_hovered={fresh_hovered:?} champ={champ_id:?} mods_dir_clean={mods_dir_clean}"
+        "[LOADSCREEN] stage: snapshot_skin={ui_skin_id:?} fresh_hovered={fresh_hovered:?} champ={champ_id:?} unowned={unowned} mods_dir_clean={mods_dir_clean}"
     );
-
+    if !unowned {
+        log_info!("[LOADSCREEN] skip: owned skin - Riot's label already shows the skin name");
+        return None;
+    }
     let Some(skin_id) = ui_skin_id.filter(|&id| id != 0) else {
         log_info!("[LOADSCREEN] skip: no non-zero skin id (snapshot_skin={ui_skin_id:?})");
         return None;
@@ -321,11 +330,7 @@ async fn stage_loadscreen_card(
         log_info!("[LOADSCREEN] skip: no champ id");
         return None;
     };
-    let (enabled, allowed) = {
-        let app_state = app.state::<Arc<AppState>>();
-        let cfg = app_state.config.lock_safe();
-        (cfg.skins.loadscreen_labels, crate::net::allowed_origins(&cfg))
-    };
+    let enabled = { app.state::<Arc<AppState>>().config.lock_safe().skins.loadscreen_labels };
     if !enabled {
         log_info!("[LOADSCREEN] skip: feature disabled");
         return None;
@@ -335,18 +340,17 @@ async fn stage_loadscreen_card(
         return None;
     };
     let lcu_client = lcu::build_lcu_client(lcu_ext::LCU_API_TIMEOUT_S);
-    let Some((alias, skin_name)) = lcu_ext::loadscreen_target(&lcu_client, &auth, champ_id, skin_id).await else {
-        log_warn!("[LOADSCREEN] skip: LCU had no skin name for champ {champ_id} skin {skin_id} (num={})", skin_id % 1000);
+    let Some((champ_display, skin_name)) = lcu_ext::loadscreen_target(&lcu_client, &auth, champ_id, skin_id).await else {
+        log_warn!("[LOADSCREEN] skip: LCU had no skin name for champ {champ_id} skin {skin_id}");
         return None;
     };
-    log_info!("[LOADSCREEN] resolved skin {skin_id} (num={}) -> '{skin_name}' alias='{alias}'", skin_id % 1000);
+    log_info!("[LOADSCREEN] resolved skin {skin_id} -> '{skin_name}' (champ '{champ_display}')");
 
-    // Committed to writing the card — ensure the mods dir is clean first.
+    // Committed to writing the mod — ensure the mods dir is clean first.
     if !mods_dir_clean {
         storage::clean_mods_dir(&paths::injection_mods_dir());
     }
-    let http = crate::net::build_external_client(15.0, allowed.clone());
-    let r = crate::skins::features::loadscreen_label::build(skin_id, &skin_name, &alias.to_lowercase(), &alias, &http, &allowed).await;
+    let r = crate::skins::features::loadscreen_label::build(&champ_display, &skin_name);
     log_info!("[LOADSCREEN] build result for '{skin_name}': {r:?}");
     r
 }
@@ -649,10 +653,11 @@ async fn run_custom_mod_injection(
     if !has_custom_skin_folder {
         // `user_skin_id` is None on the category-mods path (the has_other_mods
         // dummy selection passes None), but the dummy still carries the real
-        // picked skin in `custom_mod.skin_id` — prefer it so an official skin
-        // shown alongside a map/font/announcer mod still gets its name card.
+        // picked skin in `custom_mod.skin_id` — prefer it. Only an UNOWNED skin
+        // (base_skin_name present = base-forced) needs the name fix; the mods dir
+        // was already cleaned at the top of this function.
         let card_skin_id = Some(custom_mod.skin_id).filter(|&id| id != 0).or(user_skin_id);
-        if let Some(card) = stage_loadscreen_card(app, skins, card_skin_id, champion_id, true).await {
+        if let Some(card) = stage_loadscreen_card(app, skins, card_skin_id, champion_id, base_skin_name.is_some(), true).await {
             extra_names.push(card);
             labels.push("Loadscreen name".to_string());
         }
