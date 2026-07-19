@@ -1059,10 +1059,10 @@ fn skins_custom_mod_preview(champion_id: i64, mod_id: String) -> Result<Option<S
 /// Select one of the user's custom skin mods for this game — extracts it into
 /// the injection staging dir (same as the old bridge path) and records the pick.
 #[tauri::command]
-fn skins_pick_custom_mod(
+async fn skins_pick_custom_mod(
     champion_id: i64,
     mod_id: String,
-    state: tauri::State<Arc<AppState>>,
+    state: tauri::State<'_, Arc<AppState>>,
 ) -> Result<serde_json::Value, String> {
     use skins::slog::log_info;
     let storage = skins::injection::storage::ModStorageService::new(skins::paths::mods_dir());
@@ -1105,7 +1105,37 @@ fn skins_pick_custom_mod(
         });
     }
     log_info!("[CUSTOM] pick champ={champion_id} skin={} mod={mod_folder_name}", entry.skin_id);
-    Ok(json!({ "ok": true, "modName": mod_folder_name, "skinId": entry.skin_id }))
+
+    // Surface the chroma slots the mod's WAD chunks target so the overlay can
+    // offer a swatch row (e.g. a chroma-VFX pack covering six chroma bins) —
+    // the injector loads whichever one the user picks via
+    // `skins_set_custom_mod_chroma`.
+    let mut chroma_slots: Vec<serde_json::Value> = Vec::new();
+    if let Some(auth) = lcu::cached_auth() {
+        let client = lcu::build_lcu_client(4.0);
+        let detection = skins::injection::target_detect::detect_target_skin(&source, champion_id, &client, &auth).await;
+        if let Some(det) = detection.filter(|d| !d.via_name) {
+            if let Some(cache) = skins::lcu_ext::scrape_champion_skins(&client, &auth, champion_id).await {
+                chroma_slots = det
+                    .slots
+                    .iter()
+                    .filter_map(|s| cache.chroma_id_map.get(s))
+                    .map(|c| json!({ "id": c.id, "name": c.name, "colors": c.colors }))
+                    .collect();
+            }
+        }
+    }
+    Ok(json!({ "ok": true, "modName": mod_folder_name, "skinId": entry.skin_id, "chromaSlots": chroma_slots }))
+}
+
+/// Pick which of a custom mod's target chromas to load, WITHOUT dropping the
+/// mod selection (the normal `skins_pick_skin` supersedes the mod — last pick
+/// wins — so the mod's own swatch row needs this dedicated path).
+#[tauri::command]
+fn skins_set_custom_mod_chroma(chroma_id: Option<i64>, state: tauri::State<Arc<AppState>>) {
+    use skins::slog::log_info;
+    log_info!("[CUSTOM] chroma pick {chroma_id:?}");
+    state.skins.shared.lock_safe().selected_chroma_id = chroma_id;
 }
 
 /// Clear a selected custom mod (falls back to the normal skin/favorite path).
@@ -2448,6 +2478,7 @@ pub fn run() {
             skins_cancel_random,
             skins_list_custom_mods,
             skins_pick_custom_mod,
+            skins_set_custom_mod_chroma,
             skins_clear_custom_mod,
             skins_custom_mod_preview,
             skins_custom_mod_thumb,

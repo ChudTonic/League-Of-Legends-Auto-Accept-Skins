@@ -29,7 +29,7 @@ use crate::safety_manager::{self, InjectionDecision, InjectionDenial, InjectionO
 use crate::skins::features::historic::{self, HistoricEntry};
 use crate::skins::features::special;
 use crate::skins::injection::storage::{self, ModStorageService};
-use crate::skins::injection::{base_skin_tracker, zips, InjectionManager};
+use crate::skins::injection::{base_skin_tracker, target_detect, zips, InjectionManager};
 use crate::skins::lcu_ext;
 use crate::skins::paths;
 use crate::skins::slog::{log_error, log_info, log_warn};
@@ -125,7 +125,27 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
             mod_path: String::new(),
             relative_path: String::new(),
         });
-        run_custom_mod_injection(&app, &skins, &injection, custom, &category_mods, None, None, None, champion_name.clone(), &party_mgr).await;
+        // "Mod picked, no skin hovered" is the headline case for target
+        // detection — nothing else tells the game which slot to load.
+        let route = if custom.mod_path.is_empty() {
+            CustomModRoute::default()
+        } else {
+            plan_custom_mod_route(&skins, &custom, champ_id).await
+        };
+        run_custom_mod_injection(
+            &app,
+            &skins,
+            &injection,
+            custom,
+            &category_mods,
+            route.base_skin_name,
+            route.chroma_id,
+            None,
+            route.force_slot,
+            champion_name.clone(),
+            &party_mgr,
+        )
+        .await;
         return;
     }
 
@@ -186,22 +206,21 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
     );
 
     if let Some(custom_mod) = &selected_custom_mod {
-        let target_skin_id = custom_mod.skin_id;
-        // A base skin (`skin_id % 1000 == 0`) is always "owned" — its assets
-        // are already in the game, no downloadable ZIP exists. Without this,
-        // a library custom mod targeting the base slot is treated as unowned
-        // and dies looking for a base-skin ZIP. Treating it as owned routes
-        // it to the mods-only overlay; `run_custom_mod_injection` still
-        // force-selects the base skin so the game loads the assets the mod overrides.
-        let target_is_base = target_skin_id % 1000 == 0;
-        let is_owned = target_is_base || owned_skin_ids.contains(&target_skin_id);
-        let base_skin_name = if is_owned { None } else { Some(name.clone()) };
-        if is_owned {
-            log_info!("[INJECT] Custom mod selected for owned/base skin {target_skin_id}, injecting custom mod only");
-        } else {
-            log_info!("[INJECT] Custom mod selected for unowned skin {target_skin_id}, injecting base skin ZIP + custom mod");
-        }
-        run_custom_mod_injection(&app, &skins, &injection, custom_mod.clone(), &category_mods, base_skin_name, None, ui_skin_id, champion_name.clone(), &party_mgr).await;
+        let route = plan_custom_mod_route(&skins, custom_mod, champ_id).await;
+        run_custom_mod_injection(
+            &app,
+            &skins,
+            &injection,
+            custom_mod.clone(),
+            &category_mods,
+            route.base_skin_name,
+            route.chroma_id,
+            ui_skin_id,
+            route.force_slot,
+            champion_name.clone(),
+            &party_mgr,
+        )
+        .await;
         return;
     }
 
@@ -220,7 +239,7 @@ pub async fn trigger_injection(app: AppHandle, skins: Arc<SkinsState>, ticker_id
             mod_path: String::new(),
             relative_path: String::new(),
         };
-        run_custom_mod_injection(&app, &skins, &injection, dummy, &category_mods, base_skin_name, chroma_for_inject, None, champion_name.clone(), &party_mgr).await;
+        run_custom_mod_injection(&app, &skins, &injection, dummy, &category_mods, base_skin_name, chroma_for_inject, None, None, champion_name.clone(), &party_mgr).await;
         return;
     }
 
@@ -565,6 +584,93 @@ fn extract_mod(source: &str, mods_dir: &Path, cache_dir: &Path) -> Option<String
 // Custom-mod / category-mods injection path.
 // ---------------------------------------------------------------------
 
+/// How a selected custom mod should be injected, decided from which skin
+/// slots its WAD chunks target and which of those the user owns.
+#[derive(Debug, Default)]
+struct CustomModRoute {
+    /// ZIP token (`"skin_<id>"`) to inject as the primary when every slot the
+    /// mod targets is unowned — the LCU refuses to select unowned skins, so
+    /// the only way to show the right art is the repo's base-keyed port.
+    base_skin_name: Option<String>,
+    /// Chroma id for the ZIP resolve when the best unowned slot is a chroma.
+    chroma_id: Option<i64>,
+    /// Slot to force-select via LCU (owned, or base). None = target unknown.
+    force_slot: Option<i64>,
+}
+
+async fn plan_custom_mod_route(skins: &Arc<SkinsState>, custom_mod: &CustomModSelection, champ_id: Option<i64>) -> CustomModRoute {
+    let Some(cid) = champ_id else { return CustomModRoute::default() };
+    let Some(auth) = lcu::cached_auth() else { return CustomModRoute::default() };
+    let client = lcu::build_lcu_client(lcu_ext::LCU_API_TIMEOUT_S);
+
+    // A mod filed under a real skin folder declares its target; every Library
+    // install is filed under base, so those get their true target detected
+    // from the WAD chunk table (name-match fallback).
+    let detection = if custom_mod.skin_id % 1000 != 0 {
+        Some(target_detect::Detection { slots: vec![custom_mod.skin_id], via_name: false })
+    } else {
+        target_detect::detect_target_skin(Path::new(&custom_mod.mod_path), cid, &client, &auth).await
+    };
+    let Some(detection) = detection else { return CustomModRoute::default() };
+
+    let (owned, picked_chroma) = {
+        let shared = skins.shared.lock_safe();
+        (shared.owned_skin_ids.clone(), shared.selected_chroma_id)
+    };
+
+    // Base slot covered -> forcing base is correct and always possible.
+    if detection.slots.iter().any(|&s| s % 1000 == 0) {
+        return CustomModRoute { force_slot: Some(cid * 1000), ..CustomModRoute::default() };
+    }
+    // Prefer the chroma picked in Chud when the mod covers it, then any owned
+    // slot — selecting it makes the game load exactly the bins the mod overrides.
+    let owned_slot = detection
+        .slots
+        .iter()
+        .copied()
+        .find(|&s| Some(s) == picked_chroma && owned.contains(&s))
+        .or_else(|| detection.slots.iter().copied().find(|s| owned.contains(s)));
+    if let Some(slot) = owned_slot {
+        log_info!("[INJECT] Custom mod targets owned slot {slot}, forcing it");
+        return CustomModRoute { force_slot: Some(slot), ..CustomModRoute::default() };
+    }
+
+    // Every targeted slot is unowned: no LCU force can make the game load
+    // those bins (the client rejects unowned selections). Fall back to the
+    // unowned pipeline for the closest official art — the repo ZIP is keyed
+    // to base, so the game shows that skin/chroma while on the base slot.
+    // A name-only match keeps the mod folder staged too in case its chunks
+    // do apply.
+    let best = picked_chroma.filter(|c| detection.slots.contains(c)).unwrap_or(detection.slots[0]);
+    let (parent_skin, chroma) = classify_slot(best, lcu_ext::scrape_champion_skins(&client, &auth, cid).await.as_ref());
+    log_warn!(
+        "[INJECT] Custom mod targets only unowned slots {:?} (via_name={}) - injecting official ZIP for skin {parent_skin} chroma {chroma:?} + mod, forcing base",
+        detection.slots,
+        detection.via_name,
+    );
+    CustomModRoute {
+        base_skin_name: Some(format!("skin_{parent_skin}")),
+        chroma_id: chroma,
+        force_slot: Some(cid * 1000),
+    }
+}
+
+/// Resolve a detected slot to (parent skin, chroma) using the LCU catalog —
+/// a chroma slot needs its parent's ZIP resolved with the chroma id.
+fn classify_slot(slot: i64, cache: Option<&lcu_ext::ChampionSkinCache>) -> (i64, Option<i64>) {
+    if let Some(cache) = cache {
+        if cache.skin_id_map.contains_key(&slot) {
+            return (slot, None);
+        }
+        if let Some(parent) = cache.skins.iter().find(|s| s.chroma_details.iter().any(|c| c.id == slot)) {
+            return (parent.skin_id, Some(slot));
+        }
+    }
+    // No catalog reachable: treat the slot as a skin and never invent a
+    // chroma pairing.
+    (slot, None)
+}
+
 /// Ported from `InjectionTrigger._inject_custom_mod` — see this module's
 /// doc comment for the `clean_mods_dir`/`extra_mod_names` gap this inherits.
 #[allow(clippy::too_many_arguments)]
@@ -576,11 +682,12 @@ async fn run_custom_mod_injection(
     category_mods: &CategoryModSelections,
     base_skin_name: Option<String>,
     chroma_id: Option<i64>,
-    // The skin the user has selected in champ select. Library custom mods are
-    // all filed under the base folder, so `custom_mod.skin_id` can't tell us
-    // which skin slot the mod's art actually targets — the user's own pick is
-    // the reliable signal (they pick the skin the mod is built for).
+    // The skin the user has selected in champ select — the fallback signal
+    // for which slot to load when target detection came up empty.
     user_skin_id: Option<i64>,
+    // Slot `plan_custom_mod_route` decided to force (owned target or base);
+    // None on the category-dummy path and when the target is unknown.
+    force_slot: Option<i64>,
     champion_name: String,
     party_mgr: &Option<Arc<crate::skins::party::manager::PartyManager>>,
 ) {
@@ -663,18 +770,14 @@ async fn run_custom_mod_injection(
         }
     }
 
-    // Force the champion's base skin via the LCU when the overlay's assets are
-    // keyed to it: the explicit unowned base path (`base_skin_name`), OR any real
-    // custom SKIN mod whose target isn't an owned skin the user already has
-    // selected — base-slot mods AND unowned-skin mods both need a valid owned
-    // selection loaded for their WAD to apply. This also covers the "custom mod
-    // picked but no normal skin hovered" path (empty `name`), where nothing else
-    // forces a base skin. Owned non-base custom mods keep the user's own pick.
-    // Scoped to `has_custom_skin_folder` so a category-mods-only `dummy`
-    // selection (map/font/announcer) never forces a base skin.
-    let custom_skin_needs_base = has_custom_skin_folder
-        && (custom_mod.skin_id % 1000 == 0 || !skins.shared.lock_safe().owned_skin_ids.contains(&custom_mod.skin_id));
-    if base_skin_name.is_some() || custom_skin_needs_base {
+    // Force the champ-select selection onto the slot the overlay's WAD chunks
+    // are keyed to. Runs for the unowned base-ZIP path (`base_skin_name`) AND
+    // for every real custom SKIN mod — including owned targets, so a mod built
+    // over an owned skin (e.g. a Soul Fighter Viego VFX edit) auto-selects that
+    // skin instead of leaving the user to flip the carousel by hand. A
+    // category-mods-only `dummy` selection (map/font/announcer) with no ZIP
+    // never forces anything.
+    if base_skin_name.is_some() || has_custom_skin_folder {
         if let (Some(cid), Some(auth)) = (champion_id, lcu::cached_auth()) {
             // P0-A: gate the LCU PATCH; denied -> abort this injection
             // entirely (never patch, never build).
@@ -687,23 +790,30 @@ async fn run_custom_mod_injection(
                 let shared = skins.shared.lock_safe();
                 (shared.local_cell_id, shared.random_mode_active)
             };
-            // Load the slot the overlay's assets are actually keyed to. A
-            // community custom mod built on a NON-base skin (e.g. an enhanced
-            // Primordian Aatrox) keys its WAD chunks to that skin's slot, so
-            // forcing base (cid*1000) makes the game request vanilla-base
-            // chunks and the mod never renders — the "always redirects to the
-            // base skin" report. Force the mod's own target skin in that case;
-            // base-slot overlays and the unowned-base-ZIP path stay on base.
-            let force_skin_id = if has_custom_skin_folder && custom_mod.skin_id % 1000 != 0 {
-                custom_mod.skin_id
+            // Resolve the target slot. An unowned-skin ZIP is keyed to the
+            // base slot, so that path always forces base. Otherwise use the
+            // slot the route planner picked from the mod's detected targets,
+            // falling back to the user's own pick.
+            let force_skin_id = if base_skin_name.is_some() {
+                Some(cid * 1000)
             } else {
-                // Library custom mods all sit in the base folder, so fall back
-                // to the skin the user actually selected — a Primordian-keyed
-                // mod needs the game loaded on Primordian, not base (else it
-                // renders base and the user has to switch skins by hand).
-                user_skin_id.filter(|&id| id % 1000 != 0).unwrap_or(cid * 1000)
+                force_slot.or_else(|| user_skin_id.filter(|&id| id % 1000 != 0))
             };
-            force_base_skin(&client, &auth, local_cell, force_skin_id, random_active).await;
+            match force_skin_id {
+                Some(id) => force_base_skin(&client, &auth, local_cell, id, random_active).await,
+                None => {
+                    // Unknown target (base-filed mod, nothing detected, no pick
+                    // in Chud): a live non-base selection is the user telling us
+                    // which skin the mod goes over — leave it alone instead of
+                    // stomping it back to base.
+                    match verify_skin_applied(&client, &auth, local_cell, cid * 1000).await {
+                        Some(sel) if sel % 1000 != 0 => {
+                            log_info!("[INJECT] Custom mod target unknown - keeping user's live selection (skinId={sel})");
+                        }
+                        _ => force_base_skin(&client, &auth, local_cell, cid * 1000, random_active).await,
+                    }
+                }
+            }
         }
     }
     log_info!("[INJECT] Injecting mods: {}", labels.join(", "));
@@ -946,7 +1056,7 @@ async fn force_base_skin(
     base_skin_id: i64,
     random_mode_active: bool,
 ) {
-    log_info!("[INJECT] Forcing base skin (skinId={base_skin_id})");
+    log_info!("[INJECT] Forcing skin selection (skinId={base_skin_id})");
 
     let t_force0 = std::time::Instant::now();
     let forced = force_skin_via_lcu(client, auth, local_cell_id, base_skin_id).await;

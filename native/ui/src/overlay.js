@@ -48,6 +48,7 @@ let skinsList = [];
 let randomId = null;       // currentRandomSkinId — a rolled random skin is active
 let customMod = null;      // currentCustomMod — a custom .fantome pick is active
 let customMods = [];       // this champ's available custom mods
+let customModChromas = []; // chroma slots the picked mod's WAD targets (from the pick response)
 let favSkinId = null;      // this champ's saved favorite skin (auto-applies every game)
 let formsCache = {};       // skinId -> forms array, fetched once per champ lock (cheap static-table lookup)
 const customPreviewCache = {}; // relativePath -> resolved preview URL (sidecar data URL or R2 thumb; null if none)
@@ -185,6 +186,7 @@ async function tick() {
     rawChroma = st ? st.currentChromaId : null;
     randomId = st ? st.currentRandomSkinId : null;
     customMod = st ? st.currentCustomMod : null;
+    if (!customMod) customModChromas = [];
     newHistoric = st ? !!st.historicEnabled : false;
     newCatMods = (st && st.categoryMods) || { map: null, font: null, announcer: null, others: [] };
     histRestoredId = st ? st.historicRestoredSkinId : null;
@@ -442,8 +444,18 @@ function renderCustomBar() {
   if (!champId || !customMods.length || pickId) { bar.style.display = "none"; return; }
   bar.innerHTML = `<span class="cmlbl">Your mods:</span>` + customMods.map((m) =>
     `<span class="cmod${customMod && m.modName === customMod ? " on" : ""}" data-cmod="${esc(m.relativePath)}" data-cskin="${m.skinId}" data-hasprev="${m.hasPreview ? 1 : 0}" title="${esc(m.description || m.modName)}">${esc(m.modName)}</span>`
-  ).join("");
+  ).join("") + customModChromaRow();
   bar.style.display = "flex";
+}
+
+// Swatch row for the chroma slots the picked custom mod targets — lets the
+// user choose which chroma the injector loads (first slot when none picked).
+function customModChromaRow() {
+  if (!customMod || !customModChromas.length) return "";
+  const autoOn = !customModChromas.some((c) => c.id === chromaId);
+  return `<span class="cbnm cbcustom">◈ chroma</span>
+    <span class="chr${autoOn ? " on" : ""}" data-cmodchroma="" title="Let Chud pick (${esc(customModChromas[0].name)})">Auto</span>
+    ${customModChromas.map((c, i) => `<span class="chrsw${chromaId === c.id ? " on" : ""}" data-cmodchroma="${c.id}" title="${esc(c.name)}" style="${swatchStyle(c.colors)}"><b>${i + 1}</b></span>`).join("")}`;
 }
 
 // Alternate forms (Elementalist Lux etc.) for the currently selected skin —
@@ -491,6 +503,8 @@ function renderChromaBar() {
       <div class="cbpills">
         ${customMods.map((m) => `<span class="ccustom${customMod && m.modName === customMod ? " on" : ""}" data-cmod="${esc(m.relativePath)}" data-cskin="${m.skinId}" data-hasprev="${m.hasPreview ? 1 : 0}" title="${esc(m.description || m.modName)}">${esc(m.modName)}</span>`).join("")}
       </div>`;
+    const row = customModChromaRow();
+    if (row) html += `<div class="cbpills">${row}</div>`;
   }
   if (!html) {
     html = `<span class="cbnm">${esc(sel.skinName)}</span><span class="cbnone">No chromas for this skin</span>`;
@@ -721,7 +735,7 @@ document.addEventListener("click", async (e) => {
   }
   if (e.target.id === "clearcustom") {
     try { await invoke("skins_clear_custom_mod"); } catch {}
-    customMod = null;
+    customMod = null; customModChromas = [];
     render();
     return;
   }
@@ -733,8 +747,20 @@ document.addEventListener("click", async (e) => {
   }
   const cm = e.target.closest("[data-cmod]");
   if (cm) {
-    try { const r = await invoke("skins_pick_custom_mod", { championId: champId, modId: cm.dataset.cmod }); if (r) customMod = r.modName; } catch {}
+    try {
+      const r = await invoke("skins_pick_custom_mod", { championId: champId, modId: cm.dataset.cmod });
+      if (r) { customMod = r.modName; customModChromas = r.chromaSlots || []; }
+    } catch {}
     randomId = null; histNote = false;
+    render();
+    return;
+  }
+  // Chroma swatch on the picked custom mod — sets the slot the injector loads
+  // without dropping the mod (the normal chroma pill would supersede it).
+  const cmc = e.target.closest("[data-cmodchroma]");
+  if (cmc) {
+    const id = cmc.dataset.cmodchroma ? parseInt(cmc.dataset.cmodchroma, 10) : null;
+    try { await invoke("skins_set_custom_mod_chroma", { chromaId: id }); chromaId = id; } catch {}
     render();
     return;
   }
@@ -757,7 +783,7 @@ document.addEventListener("click", async (e) => {
     const display = fm.dataset.display || "";
     const same = formId === fakeId;
     try {
-      if (same) { await invoke("skins_pick_skin", { skinId, chromaId, skinName: null }); formId = null; }
+      if (same) { await invoke("skins_pick_skin", { skinId, chromaId, skinName: null }); formId = null; customMod = null; customModChromas = []; }
       else { await invoke("skins_pick_form", { skinId, fakeId, display }); formId = fakeId; }
     } catch {}
     histNote = false;
@@ -772,6 +798,9 @@ document.addEventListener("click", async (e) => {
     try {
       await invoke("skins_pick_skin", { skinId: skin, chromaId: chroma });
       pickId = skin; chromaId = chroma; formId = null; histNote = false;
+      // The backend drops an active custom mod on a normal pick (last pick
+      // wins) — mirror it or the mod pill reads as still active.
+      customMod = null; customModChromas = [];
     } catch {}
     render();
     return;
@@ -783,7 +812,7 @@ document.addEventListener("click", async (e) => {
     const already = pickId === id && chromaId == null && formId == null;
     try {
       if (already) { await invoke("skins_clear_pick"); pickId = null; chromaId = null; }
-      else { await invoke("skins_pick_skin", { skinId: id, chromaId: null }); pickId = id; chromaId = null; }
+      else { await invoke("skins_pick_skin", { skinId: id, chromaId: null }); pickId = id; chromaId = null; customMod = null; customModChromas = []; }
     } catch {}
     formId = null; histNote = false;
     render();
@@ -888,9 +917,15 @@ const cpreview = document.getElementById("cpreview");
 document.addEventListener("mouseover", (e) => {
   const chromaPill = e.target.closest("#chromabar [data-chroma]");
   const customPill = e.target.closest("[data-cmod]");
+  const cmodChroma = e.target.closest("[data-cmodchroma]");
   const img = cpreview.querySelector("img");
   const nm = cpreview.querySelector(".pvnm");
-  if (chromaPill) {
+  if (cmodChroma && cmodChroma.dataset.cmodchroma) {
+    img.style.display = "";
+    img.src = chromaImgUrl(parseInt(cmodChroma.dataset.cmodchroma, 10));
+    nm.textContent = cmodChroma.getAttribute("title") || "Chroma";
+    cpreview.style.display = "block";
+  } else if (chromaPill) {
     const skin = parseInt(chromaPill.dataset.skin, 10);
     const chroma = chromaPill.dataset.chroma ? parseInt(chromaPill.dataset.chroma, 10) : null;
     img.style.display = "";

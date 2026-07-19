@@ -12,6 +12,7 @@ pub mod injector;
 pub mod overlay;
 pub mod process;
 pub mod storage;
+pub mod target_detect;
 pub mod tools;
 pub mod zips;
 
