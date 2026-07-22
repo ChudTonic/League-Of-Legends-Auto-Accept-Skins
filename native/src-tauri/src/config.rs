@@ -168,11 +168,17 @@ pub struct InstalledMod {
     /// SHA-256 of the scanned file (for the ModScan status view).
     #[serde(default)]
     pub scan_sha: String,
+    /// Real skin id this mod's assets target, once known. `None` means a
+    /// champion-skin mod filed under the base placeholder (`skins/{champ*1000}`)
+    /// whose target couldn't be auto-detected at download time — the UI shows a
+    /// "Pick skin" control until the user (or a later rescan) resolves it.
+    #[serde(default)]
+    pub target_skin_id: Option<i64>,
 }
 
 impl Default for InstalledMod {
     fn default() -> Self {
-        Self { name: String::new(), champ: String::new(), version: "1.0.0".into(), size_mb: 0.0, file: String::new(), scan_verdict: String::new(), scan_sha: String::new() }
+        Self { name: String::new(), champ: String::new(), version: "1.0.0".into(), size_mb: 0.0, file: String::new(), scan_verdict: String::new(), scan_sha: String::new(), target_skin_id: None }
     }
 }
 

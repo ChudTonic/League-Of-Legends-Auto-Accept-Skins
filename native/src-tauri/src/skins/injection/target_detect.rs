@@ -72,6 +72,29 @@ pub async fn detect_target_skin(
     None
 }
 
+/// Download-time variant for the Library installer: chunk-scan only, no
+/// name-match fallback (that needs the champion's full skin catalog, a
+/// heavier LCU round-trip). Best-effort — if the League client isn't running
+/// yet (common while just browsing the Library), `cached_auth()` is `None`
+/// and this simply returns `None`, same as an undetected mod today; it never
+/// blocks the install waiting for the client. Only returns a slot when the
+/// scan finds exactly one non-base match — an ambiguous multi-slot hit (e.g. a
+/// chroma-VFX mod covering several chromas) is left for the user to resolve
+/// via `library_set_target_skin`.
+pub async fn detect_target_skin_offline(mod_path: &Path, champion_id: i64) -> Option<i64> {
+    let auth = crate::lcu::cached_auth()?;
+    let client = crate::lcu::build_lcu_client(6.0);
+    let champ = fetch_champion_data(&client, &auth, champion_id).await?;
+    let hashes = collect_chunk_hashes(mod_path);
+    if hashes.is_empty() {
+        return None;
+    }
+    match match_skin_bins(&hashes, &champ, champion_id).as_slice() {
+        [id] if *id % 1000 != 0 => Some(*id),
+        _ => None,
+    }
+}
+
 async fn fetch_champion_data(client: &reqwest::Client, auth: &Auth, champion_id: i64) -> Option<ChampionData> {
     let path = format!("/lol-game-data/assets/v1/champions/{champion_id}.json");
     let value = lcu_ext::shared_cache().get(client, auth, &path, lcu_ext::DEFAULT_CACHE_TTL).await?;

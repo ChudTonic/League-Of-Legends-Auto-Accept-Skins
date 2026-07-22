@@ -34,6 +34,13 @@
     // rendered instead of the detail modal (see `paint()`) until the user
     // cancels or explicitly installs anyway.
     scanBlock: null,
+    // Set when the user clicks "Pick skin" on an installed mod whose
+    // download-time target detection came back empty. `{modId, champId, name}`;
+    // rendered on top of everything else (see `paint()`) until closed or a skin
+    // is chosen. `pickSkinsCache` is champId -> skins[] (from `skins_catalog`),
+    // fetched once per champion and reused across opens.
+    pickTarget: null,
+    pickSkinsCache: {},
   };
   let root = null;
 
@@ -242,11 +249,22 @@
     if (!ids.length) return `<div class="lb-empty"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg><div>Nothing installed yet</div><button class="btn sm primary" data-tab="browse">Browse mods</button></div>`;
     const rows = ids.map((id) => {
       const rec = st.installed[id], m = byId[id] || {};
+      // Only a champion_skin mod ever goes through download-time target
+      // detection (see `place_library_mod`) — a null `target_skin_id` on
+      // anything else (vfx/sfx/etc. filed per-champion) is normal, not a
+      // pending pick, so this only fires with a confirmed catalog match.
+      const needsPick = rec.target_skin_id == null && m.rawCategory === "champion_skin";
+      const statusChip = needsPick
+        ? `<span class="chip lb-chip-warn" title="Couldn't auto-detect which skin this mod targets"><span class="lb-dot"></span>NEEDS SKIN</span>`
+        : `<span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span>`;
+      const actionCell = needsPick
+        ? `<button class="btn sm" data-pick="${esc(id)}" data-champid="${esc(m.champId || "")}" data-champname="${esc(rec.name || id)}">Pick skin</button>`
+        : `<span class="lb-inchamp" title="Open the Custom Mods button in champ select when this champion is up">In champ select ✓</span>`;
       return `<div class="lb-irow"><div class="lb-ithumb" style="${thumbStyle(m.id ? m : { id, thumb: null, champId: null, category: "Other" })}" data-open="${esc(id)}">${thumbInner(m.id ? m : { id, thumb: null, champId: null, category: "Other" })}</div>
         <div><div class="lb-name" data-open="${esc(id)}">${esc(rec.name || id)}</div><div class="lb-meta">by <b>${esc(m.author || "unknown")}</b>${rec.champ ? " · " + esc(rec.champ) : ""} · ${(rec.size_mb || 0).toFixed(1)} MB</div></div>
         <div class="lb-ver">v${esc(rec.version || "1.0.0")}</div>
-        <div><span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span></div>
-        <div class="lb-iactions"><span class="lb-inchamp" title="Open the Custom Mods button in champ select when this champion is up">In champ select ✓</span><button class="lb-trash" data-remove="${esc(id)}" title="Remove"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>
+        <div>${statusChip}</div>
+        <div class="lb-iactions">${actionCell}<button class="lb-trash" data-remove="${esc(id)}" title="Remove"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"><path d="M3 6h18M8 6V4h8v2m-9 0 1 14h8l1-14"/></svg></button></div>
       </div>`;
     }).join("");
     return `<div class="lb-main">
@@ -420,6 +438,66 @@
     </div></div>`;
   }
 
+  // ── Pick-skin modal ──
+  // Rendered instead of the detail/ModScan modals whenever the user clicks
+  // "Pick skin" on an installed mod (see `installedHtml`) — download-time
+  // target detection couldn't confidently resolve which skin the mod's WAD
+  // chunks override, so the user picks it manually. Reuses the ModScan
+  // modal's narrow layout and the rail's clickable-row styling rather than
+  // introducing new CSS.
+  function pickSkinModalHtml(pt) {
+    const skins = st.pickSkinsCache[pt.champId];
+    let body;
+    if (skins === undefined) body = `<div class="lb-loading" style="grid-template-columns:1fr">${"<div class='lb-skel' style='height:34px'></div>".repeat(5)}</div>`;
+    else if (!skins.length) body = `<div class="lb-empty">Couldn't load this champion's skins — make sure the League client is running and try again.</div>`;
+    else {
+      const rows = skins
+        .filter((s) => s.skin_id % 1000 !== 0)
+        .map((s) => `<div class="lb-rail-row" data-setskin="${s.skin_id}" style="cursor:pointer"><span class="lb-rn">${esc(s.name)}</span></div>`)
+        .join("");
+      body = `<div class="lb-rail-list">${rows}</div>`;
+    }
+    return `<div class="lb-backdrop" data-close="1"><div class="lb-modal lb-scan-modal" role="dialog">
+      <div class="lb-mtop"></div>
+      <div class="lb-mhead"><span class="lb-mtab">Pick target skin</span><button class="lb-mx" data-close="1">✕</button></div>
+      <div class="lb-scan-body">
+        <div class="lb-scan-sub">"${esc(pt.name)}" — pick the skin this mod is built on so it applies in champ select instead of staying on base.</div>
+        ${body}
+      </div>
+    </div></div>`;
+  }
+
+  async function openPickSkin(modId, champId, name) {
+    const cid = Number(champId) || 0;
+    st.pickTarget = { modId, champId: cid, name };
+    paint();
+    if (st.pickSkinsCache[cid] !== undefined) return;
+    try {
+      const r = await inv("skins_catalog");
+      const champs = (r && r.champions) || [];
+      const c = champs.find((x) => x.champ_id === cid);
+      st.pickSkinsCache[cid] = (c && c.skins) || [];
+    } catch (e) {
+      console.error("skins_catalog failed", e);
+      st.pickSkinsCache[cid] = [];
+    }
+    if (st.pickTarget && st.pickTarget.champId === cid) paint();
+  }
+
+  async function setTargetSkin(skinId) {
+    const pt = st.pickTarget;
+    if (!pt) return;
+    st.pickTarget = null;
+    try {
+      await inv("library_set_target_skin", { modId: pt.modId, skinId });
+      if (st.installed[pt.modId]) st.installed[pt.modId] = { ...st.installed[pt.modId], target_skin_id: skinId };
+      toast("Target skin set", `${pt.name} now applies to the right skin in champ select.`, "success");
+    } catch (e) {
+      toast("Couldn't set target skin", String(e).slice(0, 120), "danger");
+    }
+    paint();
+  }
+
   // ── render + events ──
   // The modal renders into document.body, NOT #page — #page is `.content-inner
   // .fade-in`, whose animated transform makes it a containing block for
@@ -432,10 +510,11 @@
   function paint() {
     if (!root) return;
     root.innerHTML = pageHtml();
-    // The ModScan block modal takes priority over the detail modal — only
-    // one of the two is ever shown at a time.
+    // Only one modal is ever shown at a time: ModScan block > pick-skin > detail.
     ensureModalRoot().innerHTML = st.scanBlock
       ? scanBlockModalHtml(st.scanBlock)
+      : st.pickTarget
+      ? pickSkinModalHtml(st.pickTarget)
       : (st.selId ? modalHtml((st.catalog || []).find((m) => m.id === st.selId) || {}) : "");
     wire();
     const s = document.getElementById("lbSearch");
@@ -459,10 +538,12 @@
     const search = document.getElementById("lbSearch");
     if (search) { let t = null; search.oninput = () => { clearTimeout(t); st.q = search.value; t = setTimeout(paintSoft, 160); }; }
     on("[data-open]", "onclick", (e) => { if (e.target.closest("[data-fav],[data-install],[data-remove],[data-apply]")) return; st.selId = e.currentTarget.dataset.open; paint(); });
-    // Closing the ModScan block modal only dismisses ITself — if it was
-    // opened from the detail modal (an install click there), the detail
-    // modal reappears underneath rather than also getting dismissed.
-    on("[data-close]", "onclick", (e) => { if (e.target === e.currentTarget || e.currentTarget.classList.contains("lb-mx")) { if (st.scanBlock) st.scanBlock = null; else st.selId = null; paint(); } });
+    // Closing a modal only dismisses the top one — if the detail modal was
+    // open underneath (e.g. "Pick skin" was reached from there), it
+    // reappears rather than also getting dismissed.
+    on("[data-close]", "onclick", (e) => { if (e.target === e.currentTarget || e.currentTarget.classList.contains("lb-mx")) { if (st.scanBlock) st.scanBlock = null; else if (st.pickTarget) st.pickTarget = null; else st.selId = null; paint(); } });
+    on("[data-pick]", "onclick", (e) => { e.stopPropagation(); const el = e.currentTarget; openPickSkin(el.dataset.pick, el.dataset.champid, el.dataset.champname); });
+    on("[data-setskin]", "onclick", (e) => { e.stopPropagation(); setTargetSkin(Number(e.currentTarget.dataset.setskin)); });
     on("[data-install-force]", "onclick", (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.installForce; st.scanBlock = null; install(id, true); });
     on("[data-video]", "onclick", (e) => {
       e.stopPropagation();

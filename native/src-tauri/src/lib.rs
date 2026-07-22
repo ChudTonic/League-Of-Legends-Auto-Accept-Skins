@@ -1916,6 +1916,11 @@ pub(crate) async fn place_library_mod(
     force: bool,
 ) -> Result<(Option<config::InstalledMod>, ScanSummary), String> {
     use skins::slog::{log_info, log_warn};
+    // Resolved champion id, when this mod lands under a per-champ skins folder
+    // (either a champion_skin or a champ-carrying vfx/sfx/etc.) — captured here
+    // so the champion-skin download-time target detection below doesn't have to
+    // re-run champ resolution.
+    let mut resolved_champ_id: Option<i64> = None;
     // Resolve the destination folder (relative to mods/) by category.
     let rel_dir: std::path::PathBuf = match library_category_dir(category) {
         // A champion-specific cosmetic (a chroma, or a skin-variant VFX/SFX/etc.)
@@ -1925,6 +1930,7 @@ pub(crate) async fn place_library_mod(
         // never carry a champion, so they stay in their flat folder.
         Some(cat_dir) => match champ_id.filter(|&id| id > 0).or_else(|| resolve_champ_id_by_name(champ)) {
             Some(cid) if !CATEGORY_ALWAYS_GLOBAL.contains(&category) => {
+                resolved_champ_id = Some(cid);
                 std::path::PathBuf::from("skins").join((cid * 1000).to_string())
             }
             _ => std::path::PathBuf::from(cat_dir),
@@ -1934,6 +1940,7 @@ pub(crate) async fn place_library_mod(
                 log_warn!("[LIBRARY] no champion resolved for skin mod '{name}' (champ='{champ}')");
                 format!("Couldn't match \"{champ}\" to a champion.")
             })?;
+            resolved_champ_id = Some(cid);
             std::path::PathBuf::from("skins").join((cid * 1000).to_string())
         }
     };
@@ -1988,13 +1995,47 @@ pub(crate) async fn place_library_mod(
     };
     let size_mb = (bytes.len() as f64) / 1_048_576.0;
 
+    // A corrupt/non-zip body (currently only caught by the >1KB size floor
+    // above) must never get written to disk and badged "installed" — verify
+    // it's a readable archive before anything below touches the filesystem.
+    if zip::ZipArchive::new(std::io::Cursor::new(bytes)).is_err() {
+        log_warn!("[LIBRARY] '{name}' isn't a readable archive - refusing to install");
+        return Err(format!("'{name}' didn't download as a valid mod archive — try again."));
+    }
+
     let dir = skins::paths::mods_dir().join(&rel_dir);
     tokio::fs::create_dir_all(&dir).await.map_err(|e| e.to_string())?;
     let stem = sanitize_mod_filename(name, mod_id);
     let file_name = format!("{stem}.fantome");
-    tokio::fs::write(dir.join(&file_name), bytes).await.map_err(|e| e.to_string())?;
-    let rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
+    let file_path = dir.join(&file_name);
+    tokio::fs::write(&file_path, bytes).await.map_err(|e| e.to_string())?;
+    let mut rel_file = rel_dir.join(&file_name).to_string_lossy().replace('\\', "/");
     log_info!("[LIBRARY] installed '{name}' ({size_mb:.1} MB) -> mods/{rel_file}");
+
+    // Champion skins are filed under the base placeholder (skins/{champ*1000})
+    // because the library can't know which real skin slot a custom mod's WAD
+    // chunks target (see target_detect.rs). Try to resolve it right now with an
+    // offline chunk-hash scan and re-file under the real skin id immediately —
+    // that's strictly better than leaving it for injection time to guess (and
+    // possibly get wrong). Best-effort: `resolved_champ_id` and the LCU-backed
+    // scan can both come back empty, in which case the mod stays on the
+    // placeholder with `target_skin_id: None` and the UI offers a manual pick.
+    let mut target_skin_id: Option<i64> = None;
+    if category == "champion_skin" {
+        if let Some(cid) = resolved_champ_id {
+            if let Some(id) = skins::injection::target_detect::detect_target_skin_offline(&file_path, cid).await {
+                let real_dir = skins::paths::mods_dir().join("skins").join(id.to_string());
+                if tokio::fs::create_dir_all(&real_dir).await.is_ok() {
+                    let real_path = real_dir.join(&file_name);
+                    if tokio::fs::rename(&file_path, &real_path).await.is_ok() {
+                        rel_file = std::path::PathBuf::from("skins").join(id.to_string()).join(&file_name).to_string_lossy().replace('\\', "/");
+                        target_skin_id = Some(id);
+                        log_info!("[LIBRARY] '{name}' auto-detected -> skin {id}, refiled to mods/{rel_file}");
+                    }
+                }
+            }
+        }
+    }
 
     let record = config::InstalledMod {
         name: name.to_string(),
@@ -2004,6 +2045,7 @@ pub(crate) async fn place_library_mod(
         file: rel_file,
         scan_verdict: summary.verdict.clone(),
         scan_sha: summary.sha256.clone(),
+        target_skin_id,
     };
     Ok((Some(record), summary))
 }
@@ -2265,6 +2307,47 @@ fn library_remove(mod_id: String, state: tauri::State<Arc<AppState>>) -> serde_j
     json!({ "installed": c.library.installed })
 }
 
+/// Manually resolve a champion-skin mod's target slot when download-time
+/// auto-detection (`place_library_mod`) couldn't confidently pick one — moves
+/// the `.fantome` into `mods/skins/{skin_id}/`, which is what makes the fast
+/// path in `plan_custom_mod_route` (trigger.rs) force the real skin slot
+/// instead of guessing at game time. `_app` isn't used yet (no live client
+/// write needed here) but kept in the signature for parity with the rest of
+/// the Library command surface, which all take it.
+#[tauri::command]
+async fn library_set_target_skin(
+    _app: AppHandle,
+    mod_id: String,
+    skin_id: i64,
+    state: tauri::State<'_, Arc<AppState>>,
+) -> Result<(), String> {
+    use skins::slog::log_info;
+    let (old_rel, name) = {
+        let c = state.config.lock_safe();
+        let rec = c.library.installed.get(&mod_id).ok_or("mod not installed")?;
+        (rec.file.clone(), rec.name.clone())
+    };
+    let old_path = skins::paths::mods_dir().join(&old_rel);
+    let file_name = old_path.file_name().ok_or("mod file has no name")?.to_owned();
+    let new_dir = skins::paths::mods_dir().join("skins").join(skin_id.to_string());
+    tokio::fs::create_dir_all(&new_dir).await.map_err(|e| e.to_string())?;
+    let new_path = new_dir.join(&file_name);
+    if old_path != new_path {
+        tokio::fs::rename(&old_path, &new_path).await.map_err(|e| format!("couldn't move '{name}': {e}"))?;
+    }
+    let new_rel = std::path::PathBuf::from("skins").join(skin_id.to_string()).join(&file_name).to_string_lossy().replace('\\', "/");
+    {
+        let mut c = state.config.lock_safe();
+        if let Some(rec) = c.library.installed.get_mut(&mod_id) {
+            rec.file = new_rel.clone();
+            rec.target_skin_id = Some(skin_id);
+        }
+        let _ = c.save();
+    }
+    log_info!("[LIBRARY] '{name}' target skin set to {skin_id} - moved to mods/{new_rel}");
+    Ok(())
+}
+
 /// Import the current-patch best runes + summoner spells + item build for your
 /// locked champion into the live client, via the runes Worker + the local LCU.
 /// Manual trigger for an "Import build" button (`spawn_runes_auto_import` calls
@@ -2517,6 +2600,7 @@ pub fn run() {
             library_set_auto_update,
             library_install,
             library_remove,
+            library_set_target_skin,
             library_bundles,
             library_install_bundle,
             modscan_rescan,

@@ -425,9 +425,15 @@ function renderSkinsPanel() {
     const check = on && chromaId == null && formId == null ? '<span class="chk">✓</span>' : "";
     const isFav = favSkinId === s.skinId;
     const star = `<span class="fav${isFav ? " on" : ""}" data-fav="${s.skinId}" title="${isFav ? "Unset favorite" : "Set favorite — auto-applies every game"}">${isFav ? "★" : "☆"}</span>`;
+    // A custom mod filed under this skin's id — badge nudges users who'd
+    // otherwise pick the tile and miss the .ccustom chip below the grid.
+    const mod = customMods.find((cm) => cm.skinId === s.skinId);
+    const modBadge = mod
+      ? `<span class="skin-modbadge" data-cmod="${esc(mod.relativePath)}" data-cskin="${mod.skinId}" data-hasprev="${mod.hasPreview ? 1 : 0}" data-modname="${esc(mod.modName)}" title="Custom mod: ${esc(mod.modName)} — click to apply">🧩 Mod</span>`
+      : "";
     return `<div class="sk${on || histOn ? " on" : ""}${undl}" data-skin="${s.skinId}" data-dl="${s.downloaded ? 1 : 0}">
       <img loading="lazy" src="${skinTileUrl(s.skinId)}" alt="" data-imgerr="hide">
-      ${badge}${note}${star}<span class="nm">${esc(s.skinName)}</span>${check}</div>`;
+      ${badge}${modBadge}${note}${star}<span class="nm">${esc(s.skinName)}</span>${check}</div>`;
   }).join("");
 
   renderFormBar();
@@ -937,7 +943,10 @@ document.addEventListener("mouseover", (e) => {
     // Library R2 thumbnail), falling back to the slot it replaces while it loads.
     const skin = parseInt(customPill.dataset.cskin, 10);
     const rel = customPill.dataset.cmod;
-    const modName = customPill.textContent || "Custom mod";
+    // Grid-tile badges carry the real name in data-modname (their textContent
+    // is just the generic "🧩 Mod" label); the .ccustom/.cmod chips don't set
+    // it, so they keep falling back to their own textContent.
+    const modName = customPill.dataset.modname || customPill.textContent || "Custom mod";
     img.style.display = "";
     nm.textContent = "🧩 " + modName;
     cpreview.style.display = "block";
