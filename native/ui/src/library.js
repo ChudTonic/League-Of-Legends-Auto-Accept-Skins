@@ -310,14 +310,15 @@
     if (!ids.length) return `<div class="lb-empty"><svg viewBox="0 0 24 24" width="30" height="30" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg><div>Nothing installed yet</div><button class="btn sm primary" data-tab="browse">Browse mods</button></div>`;
     const rows = ids.map((id) => {
       const rec = st.installed[id], m = byId[id] || {};
-      // Only a champion_skin mod ever goes through download-time target
-      // detection (see `place_library_mod`) — a null `target_skin_id` on
-      // anything else (vfx/sfx/etc. filed per-champion) is normal, not a
-      // pending pick, so this only fires with a confirmed catalog match.
-      const needsPick = rec.target_skin_id == null && m.rawCategory === "champion_skin";
-      const statusChip = needsPick
-        ? `<span class="chip lb-chip-warn" title="Couldn't auto-detect which skin this mod targets"><span class="lb-dot"></span>NEEDS SKIN</span>`
-        : `<span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span>`;
+      // A champion_skin mod with no resolved specific skin sits at the base
+      // placeholder and applies to the base/default skin in game — it works,
+      // it's just on base. We can't reliably auto-detect "this replaces the
+      // default skin" (most base mods ship no skin0.bin, and RuneForge doesn't
+      // declare the target), so don't alarm the user with "NEEDS SKIN"; show it
+      // as base-targeted and let them re-target via "Change skin" if they
+      // actually wanted a specific skin.
+      const onBase = rec.target_skin_id == null && m.rawCategory === "champion_skin";
+      const statusChip = `<span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span>`;
       // Purely informational — injection is already conflict-safe (explicit
       // per-path selection), this just flags that another installed mod also
       // claims this skin slot so the user knows only one applies per game.
@@ -331,10 +332,10 @@
       const updateBtn = st.updates[id]
         ? `<button class="btn sm" data-update="${esc(id)}" ${updating ? "disabled" : ""}>${updating ? "Updating…" : "Update"}</button>`
         : "";
-      const actionCell = needsPick
-        ? `<button class="btn sm" data-pick="${esc(id)}" data-champid="${esc(m.champId || "")}" data-champname="${esc(rec.name || id)}">Pick skin</button>`
+      const actionCell = onBase
+        ? `<button class="btn sm ghost" data-pick="${esc(id)}" data-champid="${esc(m.champId || "")}" data-champname="${esc(rec.name || id)}" title="Applies to the base skin — change it if you meant a specific skin">Change skin</button>`
         : `<span class="lb-inchamp" title="Open the Custom Mods button in champ select when this champion is up">In champ select ✓</span>`;
-      const skinName = rec.target_skin_id != null && st.skinNameIndex ? st.skinNameIndex[rec.target_skin_id] : null;
+      const skinName = rec.target_skin_id != null && st.skinNameIndex ? st.skinNameIndex[rec.target_skin_id] : (onBase ? "Base skin" : null);
       return `<div class="lb-irow"><div class="lb-ithumb" style="${thumbStyle(m.id ? m : { id, thumb: null, champId: null, category: "Other" })}" data-open="${esc(id)}">${thumbInner(m.id ? m : { id, thumb: null, champId: null, category: "Other" })}</div>
         <div><div class="lb-name" data-open="${esc(id)}">${esc(rec.name || id)}</div><div class="lb-meta">by <b>${esc(m.author || "unknown")}</b>${rec.champ ? " · " + esc(rec.champ) : ""} · ${(rec.size_mb || 0).toFixed(1)} MB</div>${skinName ? `<div class="lb-target-skin">→ ${esc(skinName)}</div>` : ""}</div>
         <div class="lb-ver">v${esc(rec.version || "1.0.0")}</div>
