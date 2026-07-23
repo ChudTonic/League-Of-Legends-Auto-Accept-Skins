@@ -340,9 +340,19 @@ pub fn extract_zip_to_mod(mods_dir: &Path, zip_path: &Path) -> Result<PathBuf, E
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::sync::Mutex;
+
+    // ModStorageService::new trips a process-wide LAYOUT_ENSURED once-guard (a
+    // production hot-path opt: one mods_root per process). These tests use their
+    // own roots and run in parallel, so serialize the two constructors and reset
+    // the guard before the layout-sensitive one — otherwise a sibling test trips
+    // the flag first and `new()` skips building the layout under this root.
+    static CONSTRUCT_LOCK: Mutex<()> = Mutex::new(());
 
     #[test]
     fn ensure_layout_creates_categories_and_leaves_unknown_dirs() {
+        let _guard = CONSTRUCT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
+        super::LAYOUT_ENSURED.store(false, std::sync::atomic::Ordering::Relaxed);
         let root = std::env::temp_dir().join("chud_storage_test_layout");
         let _ = std::fs::remove_dir_all(&root);
         std::fs::create_dir_all(root.join("some_users_experiment")).unwrap();
@@ -361,6 +371,7 @@ mod tests {
 
     #[test]
     fn has_mods_for_skin_reflects_extracted_folders() {
+        let _guard = CONSTRUCT_LOCK.lock().unwrap_or_else(|e| e.into_inner());
         let root = std::env::temp_dir().join("chud_storage_test_skins");
         let _ = std::fs::remove_dir_all(&root);
         let svc = ModStorageService::new(root.clone());
