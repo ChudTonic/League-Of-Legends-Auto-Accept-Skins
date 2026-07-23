@@ -20,6 +20,7 @@ use std::time::Duration;
 
 use serde_json::json;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri_plugin_notification::NotificationExt;
 
 use crate::lcu;
 use crate::skins::lcu_ext;
@@ -139,6 +140,19 @@ impl PresenceDetector {
             log_presence(&mut last_status, format!("in lobby room (party {}), {count} member(s)", &party_id[..party_id.len().min(8)]));
             if count > 1 && should_nudge(&party_id, last_nudged_party_id.as_deref()) {
                 log_info!("[PARTY] Presence: {count} in room -> nudging (chudders detected)");
+                // OS toast — the user is in the League client, not looking at
+                // the Chud window, so an in-app toast alone is invisible to
+                // them. A Windows notification shows over the client. (Fires in
+                // the lobby/queue, not in-game, so game-mode Focus Assist won't
+                // suppress it.)
+                let _ = self
+                    .app
+                    .notification()
+                    .builder()
+                    .title("Chudders in your party")
+                    .body("Someone here uses Chud. Turn on party mode to see each other's skins.")
+                    .show();
+                // In-app toast too, for when the Chud window IS focused.
                 let _ = self.app.emit(
                     "notification",
                     json!({
