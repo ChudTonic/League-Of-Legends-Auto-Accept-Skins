@@ -570,6 +570,15 @@ pub async fn champ_select_session(client: &reqwest::Client, auth: &Auth) -> Opti
     serde_json::from_value(value).ok()
 }
 
+/// Uncached variant — the party skin roster (the authority for accepting a
+/// peer's skin) must reflect the LATEST champion locks, so it must never be
+/// served from even a brief cache snapshot that could predate a teammate's
+/// lock. `Duration::ZERO` bypasses the shared cache entirely.
+pub async fn champ_select_session_uncached(client: &reqwest::Client, auth: &Auth) -> Option<SessionData> {
+    let value = shared_cache().get(client, auth, "/lol-champ-select/v1/session", Duration::ZERO).await?;
+    serde_json::from_value(value).ok()
+}
+
 /// All owned skin IDs from the inventory (expensive — call explicitly, not
 /// on a poll tick; matches the Python docstring's warning).
 pub async fn owned_skin_ids(client: &reqwest::Client, auth: &Auth) -> Option<HashSet<i64>> {

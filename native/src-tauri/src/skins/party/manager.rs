@@ -1472,10 +1472,16 @@ impl PartyManager {
         // whole match, so retry a few times before treating it as unavailable.
         for attempt in 0..3 {
             if let Some(auth) = lcu::cached_auth() {
-                if let Some(session) = lcu_ext::champ_select_session(&self.http_client, &auth).await {
+                // Uncached: a peer may have locked their champion moments ago
+                // and a cached session snapshot would miss them, wrongly
+                // rejecting their skin ("not in roster"). Each retry re-fetches
+                // live so a just-propagated lock is picked up.
+                if let Some(session) = lcu_ext::champ_select_session_uncached(&self.http_client, &auth).await {
                     let my_cell = session.local_player_cell_id;
+                    let my_team = session.my_team.unwrap_or_default();
+                    let raw: Vec<(i64, i64)> = my_team.iter().map(|c| (c.cell_id.unwrap_or(0), c.champion_id.unwrap_or(0))).collect();
                     let mut ids = HashSet::new();
-                    for cell in session.my_team.unwrap_or_default() {
+                    for cell in &my_team {
                         if cell.cell_id == my_cell {
                             continue; // exclude myself
                         }
@@ -1485,6 +1491,7 @@ impl PartyManager {
                             }
                         }
                     }
+                    log_info!("[SKIN_COLLECT] live roster (my_team cells cell:champ = {raw:?}, my_cell={my_cell:?}) -> allied champions {ids:?}");
                     return Some(ids);
                 }
             }
@@ -1493,6 +1500,7 @@ impl PartyManager {
                 tokio::time::sleep(std::time::Duration::from_millis(300)).await;
             }
         }
+        log_info!("[SKIN_COLLECT] live roster unavailable (champ-select session not readable after 3 tries)");
         None
     }
 }
