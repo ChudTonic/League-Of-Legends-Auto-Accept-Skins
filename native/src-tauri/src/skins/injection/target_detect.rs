@@ -95,14 +95,7 @@ pub async fn detect_target_skin_offline(mod_path: &Path, champion_id: i64) -> Op
     let champ = champ.or_else(|| offline_champion_data(champion_id))?;
 
     let hashes = collect_chunk_hashes(mod_path);
-    let by_hash = if hashes.is_empty() {
-        None
-    } else {
-        match match_skin_bins(&hashes, &champ, champion_id).as_slice() {
-            [id] if *id % 1000 != 0 => Some(*id),
-            _ => None,
-        }
-    };
+    let by_hash = if hashes.is_empty() { None } else { pick_single_slot(&match_skin_bins(&hashes, &champ, champion_id)) };
     by_hash.or_else(|| match_mod_name(mod_path, &champ, champion_id))
 }
 
@@ -146,6 +139,17 @@ fn match_skin_bins(hashes: &HashSet<u64>, champ: &ChampionData, champion_id: i64
         log_info!("[TARGET] WAD chunk scan matched skin slots {found:?} (champion {alias})");
     }
     found
+}
+
+/// Single-slot pick from a chunk-hash match: a mod whose WAD references
+/// exactly one skin slot resolves to it, base included. Empty (no match) or
+/// multi-slot (ambiguous, e.g. a chroma-VFX mod covering several chromas) both
+/// fall through to `None` for the caller to resolve another way.
+fn pick_single_slot(matches: &[i64]) -> Option<i64> {
+    match matches {
+        [id] => Some(*id),
+        _ => None,
+    }
 }
 
 /// Longest catalog skin name contained in the mod's file name (both sides
@@ -368,5 +372,25 @@ mod tests {
         let mut hashes = HashSet::new();
         insert_raw_chunk("data/aabbccdd00112233.dds", &mut hashes);
         assert!(hashes.contains(&0xaabbccdd00112233));
+    }
+
+    #[test]
+    fn pick_single_slot_accepts_base() {
+        assert_eq!(pick_single_slot(&[523000]), Some(523000));
+    }
+
+    #[test]
+    fn pick_single_slot_accepts_specific_skin() {
+        assert_eq!(pick_single_slot(&[523001]), Some(523001));
+    }
+
+    #[test]
+    fn pick_single_slot_empty_is_none() {
+        assert_eq!(pick_single_slot(&[]), None);
+    }
+
+    #[test]
+    fn pick_single_slot_ambiguous_is_none() {
+        assert_eq!(pick_single_slot(&[523000, 523001]), None);
     }
 }

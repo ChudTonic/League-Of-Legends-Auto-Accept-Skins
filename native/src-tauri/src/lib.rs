@@ -2332,29 +2332,36 @@ pub(crate) async fn place_library_mod(
     if category == "champion_skin" {
         if let Some(cid) = resolved_champ_id {
             if let Some(id) = skins::injection::target_detect::detect_target_skin_offline(&file_path, cid).await {
-                let real_dir = skins::paths::mods_dir().join("skins").join(id.to_string());
-                if tokio::fs::create_dir_all(&real_dir).await.is_ok() {
-                    // `rename` overwrites an existing destination on Windows — a
-                    // second mod that sanitizes to the same stem AND resolves to
-                    // this same skin slot would otherwise silently clobber the
-                    // first. Same collision-safe suffix loop as `library_set_target_skin`.
-                    let mut real_path = real_dir.join(&file_name);
-                    if real_path.exists() {
-                        let mut n = 2;
-                        loop {
-                            let candidate = real_dir.join(format!("{stem}-{n}.fantome"));
-                            if !candidate.exists() {
-                                real_path = candidate;
-                                break;
+                if id == cid * 1000 {
+                    // Base skin: the file is already sitting at the base placeholder
+                    // it was just written to (`real_path == file_path`) — re-filing
+                    // would hit the collision branch below and wrongly suffix it.
+                    target_skin_id = Some(id);
+                } else {
+                    let real_dir = skins::paths::mods_dir().join("skins").join(id.to_string());
+                    if tokio::fs::create_dir_all(&real_dir).await.is_ok() {
+                        // `rename` overwrites an existing destination on Windows — a
+                        // second mod that sanitizes to the same stem AND resolves to
+                        // this same skin slot would otherwise silently clobber the
+                        // first. Same collision-safe suffix loop as `library_set_target_skin`.
+                        let mut real_path = real_dir.join(&file_name);
+                        if real_path.exists() {
+                            let mut n = 2;
+                            loop {
+                                let candidate = real_dir.join(format!("{stem}-{n}.fantome"));
+                                if !candidate.exists() {
+                                    real_path = candidate;
+                                    break;
+                                }
+                                n += 1;
                             }
-                            n += 1;
                         }
-                    }
-                    if tokio::fs::rename(&file_path, &real_path).await.is_ok() {
-                        let final_name = real_path.file_name().expect("real_path always has a filename").to_owned();
-                        rel_file = std::path::PathBuf::from("skins").join(id.to_string()).join(&final_name).to_string_lossy().replace('\\', "/");
-                        target_skin_id = Some(id);
-                        log_info!("[LIBRARY] '{name}' auto-detected -> skin {id}, refiled to mods/{rel_file}");
+                        if tokio::fs::rename(&file_path, &real_path).await.is_ok() {
+                            let final_name = real_path.file_name().expect("real_path always has a filename").to_owned();
+                            rel_file = std::path::PathBuf::from("skins").join(id.to_string()).join(&final_name).to_string_lossy().replace('\\', "/");
+                            target_skin_id = Some(id);
+                            log_info!("[LIBRARY] '{name}' auto-detected -> skin {id}, refiled to mods/{rel_file}");
+                        }
                     }
                 }
             }

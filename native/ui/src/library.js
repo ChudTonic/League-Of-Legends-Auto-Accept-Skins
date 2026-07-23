@@ -210,6 +210,11 @@
   function thumbInner(m) {
     if (m.thumb) return "";
     if (m.champId) return `<img class="lb-ph-icon" loading="lazy" src="${CI(m.champId)}" alt="" data-imgerr="hide">`;
+    // Imported mods have no catalog entry to categorize by — the generic
+    // "OTHER" text placeholder reads as broken, so give them their own glyph.
+    if (typeof m.id === "string" && m.id.startsWith("local-")) {
+      return `<span class="lb-ph-imported" style="display:flex;flex-direction:column;align-items:center;gap:4px">${DL_ICON.replace('width="13" height="13"', 'width="22" height="22"')}<span class="lb-ph-cat">IMPORTED</span></span>`;
+    }
     return `<span class="lb-ph-cat">${esc(catShort(m.category))}</span>`;
   }
   const DL_ICON = `<svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="1.9" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3v12m0 0 4-4m-4 4-4-4M4 21h16"/></svg>`;
@@ -538,11 +543,14 @@
     if (skins === undefined) body = `<div class="lb-loading" style="grid-template-columns:1fr">${"<div class='lb-skel' style='height:34px'></div>".repeat(5)}</div>`;
     else if (!skins.length) body = `<div class="lb-empty">Couldn't load this champion's skins — make sure the League client is running and try again.</div>`;
     else {
+      // Mirrors the Import modal's "Base skin" choice — base has no catalog
+      // entry, so it's a synthetic row rather than filtered out of `skins`.
+      const baseRow = `<div class="lb-rail-row" data-setskin="${pt.champId * 1000}" style="cursor:pointer"><span class="lb-rn">Base skin</span></div>`;
       const rows = skins
         .filter((s) => s.skin_id % 1000 !== 0)
         .map((s) => `<div class="lb-rail-row" data-setskin="${s.skin_id}" style="cursor:pointer"><span class="lb-rn">${esc(s.name)}</span></div>`)
         .join("");
-      body = `<div class="lb-rail-list">${rows}</div>`;
+      body = `<div class="lb-rail-list">${baseRow}${rows}</div>`;
     }
     return `<div class="lb-backdrop" data-close="1"><div class="lb-modal lb-scan-modal" role="dialog">
       <div class="lb-mtop"></div>
@@ -674,7 +682,10 @@
       if (detected == null || st.importChampId !== champId || st.importSkinId !== "auto") return;
       const champ = (st.importCatalog || []).find((c) => c.champ_id === champId);
       const known = champ && (champ.skins || []).some((s) => s.skin_id === detected);
-      if (known) { st.importSkinId = String(detected); paint(); }
+      // Base has no numbered <option> — it's the dropdown's "base" value — so
+      // a raw String(detected) here would match nothing and silently fall
+      // back to Auto in the UI.
+      if (known) { st.importSkinId = detected % 1000 === 0 ? "base" : String(detected); paint(); }
     } catch (e) { /* best-effort — stays on Auto */ }
   }
 
