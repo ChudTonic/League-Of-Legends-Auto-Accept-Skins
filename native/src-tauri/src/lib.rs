@@ -391,6 +391,38 @@ fn skins_clear_broken(rel_path: String) {
     crate::skins::broken_mods::unflag(&rel_path);
 }
 
+/// EXPERIMENTAL repair of a BROKEN mod: strip the champion ability record that
+/// breaks the game, keeping the cosmetic skin, then repack in place (original
+/// backed up to `<file>.chudbak`). Re-verifies and clears the broken flag on
+/// success. Returns a summary string. Experimental — abilities are guaranteed
+/// protected, but a very old mod's VFX may render partially after conversion.
+#[tauri::command]
+fn skins_repair_mod(rel_path: String) -> Result<String, String> {
+    let entry = crate::skins::broken_mods::list()
+        .get(&rel_path)
+        .cloned()
+        .ok_or_else(|| "this mod isn't flagged broken".to_string())?;
+    let mod_path = crate::skins::paths::mods_dir().join(rel_path.replace('/', std::path::MAIN_SEPARATOR_STR));
+    if !mod_path.is_file() {
+        return Err("mod file not found".to_string());
+    }
+    let summary = match crate::skins::injection::repair::repair_ability_override(&mod_path, entry.champion_id) {
+        Ok(s) => s,
+        Err(e) => {
+            use skins::slog::log_info;
+            log_info!("[REPAIR] failed for '{rel_path}': {e}");
+            return Err(e);
+        }
+    };
+    // Prove the repair worked before clearing the flag — never mark a still-
+    // dangerous mod safe.
+    if crate::skins::injection::target_detect::overrides_ability_data(&mod_path, entry.champion_id).is_some() {
+        return Err("repair did not clear the ability override — left flagged".to_string());
+    }
+    crate::skins::broken_mods::unflag(&rel_path);
+    Ok(summary)
+}
+
 /// Open an external attribution link (e.g. "View on RuneForge") in the
 /// user's default browser. Locked down: HTTPS only, and only the specific
 /// hosts we surface links to — a webview-supplied URL can't turn this into a
@@ -3505,6 +3537,7 @@ pub fn run() {
             set_theme,
             skins_broken_mods,
             skins_clear_broken,
+            skins_repair_mod,
             get_profile,
             skins_get_state,
             skins_set_overlay_card_cols,

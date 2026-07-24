@@ -51,6 +51,9 @@ pub fn init(logs_dir: &Path) {
         return; // lost an init race — the other caller's writer thread owns it
     }
     let _ = std::thread::Builder::new().name("chud-skins-log".into()).spawn(move || writer_loop(path, rx));
+    // Version banner — every log states the running build (removes any "which
+    // version is this?" ambiguity when diagnosing a report).
+    log(Level::Info, &format!("[BOOT] Chud {} — skins log started", env!("CARGO_PKG_VERSION")));
 }
 
 /// Queue a log line. Drops silently (never blocks) if the writer is behind

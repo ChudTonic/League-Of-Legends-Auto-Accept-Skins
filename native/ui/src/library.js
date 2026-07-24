@@ -326,7 +326,7 @@
       // mod's file path in the store.
       const broken = (rec.file && st.brokenMods && st.brokenMods[rec.file]) || null;
       const statusChip = broken
-        ? `<span class="chip lb-chip-broken" title="This mod overrides ${esc(rec.champ || "the champion")}'s abilities (${esc(broken.reason_path)}) — blocked so it can't break your game. Remove it and find a cosmetic-only version.">⛔ BROKEN — breaks abilities</span>`
+        ? `<span class="chip lb-chip-broken" title="This mod overrides ${esc(rec.champ || "the champion")}'s abilities (${esc(broken.reason_path)}) — blocked so it can't break your game. Try Repair (experimental) to strip the ability data and keep the skin, or remove it.">⛔ BROKEN — breaks abilities</span>`
         : `<span class="chip lb-chip-ok"><span class="lb-dot on"></span>WORKING</span>`;
       // Purely informational — injection is already conflict-safe (explicit
       // per-path selection), this just flags that another installed mod also
@@ -341,7 +341,9 @@
       const updateBtn = st.updates[id]
         ? `<button class="btn sm" data-update="${esc(id)}" ${updating ? "disabled" : ""}>${updating ? "Updating…" : "Update"}</button>`
         : "";
-      const actionCell = onBase
+      const actionCell = broken
+        ? `<button class="btn sm lb-repair" data-repair="${esc(id)}" data-relpath="${esc(rec.file || "")}" title="EXPERIMENTAL. Strips the ability data that breaks the game and keeps the skin. Abilities are always protected; a very old mod's effects may look partial after. Your original is backed up.">⚗ Repair (beta)</button>`
+        : onBase
         ? `<button class="btn sm ghost" data-pick="${esc(id)}" data-champid="${esc(m.champId || "")}" data-champname="${esc(rec.name || id)}" title="Applies to the base skin — change it if you meant a specific skin">Change skin</button>`
         : `<span class="lb-inchamp" title="Open the Custom Mods button in champ select when this champion is up">In champ select ✓</span>`;
       const skinName = rec.target_skin_id != null && st.skinNameIndex ? st.skinNameIndex[rec.target_skin_id] : (onBase ? "Base skin" : null);
@@ -857,6 +859,7 @@
     on("[data-fav]", "onclick", async (e) => { e.stopPropagation(); const id = e.currentTarget.dataset.fav; const on2 = !st.favs.includes(id); try { const favs = await inv("library_set_favorite", { modId: id, on: on2 }); st.favs = favs || (S.hasBackend ? st.favs : (on2 ? [...st.favs, id] : st.favs.filter((x) => x !== id))); } catch (er) {} paint(); });
     on("[data-install]", "onclick", (e) => { e.stopPropagation(); install(e.currentTarget.dataset.install); });
     on("[data-update]", "onclick", (e) => { e.stopPropagation(); updateMod(e.currentTarget.dataset.update); });
+    on("[data-repair]", "onclick", (e) => { e.stopPropagation(); const el = e.currentTarget; repairMod(el.dataset.repair, el.dataset.relpath); });
     on("[data-checkupdates]", "onclick", (e) => { e.stopPropagation(); checkUpdatesNow(); });
     on("[data-updateall]", "onclick", (e) => { e.stopPropagation(); updateAllMods(); });
     on("[data-bundle]", "onclick", (e) => { e.stopPropagation(); installBundle(e.currentTarget.dataset.bundle); });
@@ -930,6 +933,21 @@
   // Re-download an installed mod in place and swap in its refreshed record.
   // `library_update_mod` never rewrites the file on a blocked/unchanged
   // verdict, so `st.updates[id]` only clears on an actual "updated"/"up_to_date".
+  // EXPERIMENTAL: strip the ability data that breaks the game, keep the skin.
+  async function repairMod(id, relPath) {
+    if (!relPath) { toast("Can't repair", "No file path recorded for this mod.", "warning"); return; }
+    const rec = st.installed[id] || {};
+    toast("Repairing…", `Converting ${rec.name || id} to a safe version (experimental).`, "info");
+    try {
+      const summary = await inv("skins_repair_mod", { relPath });
+      if (st.brokenMods) { const n = { ...st.brokenMods }; delete n[relPath]; st.brokenMods = n; }
+      toast("Repaired (experimental)", `${summary || "Ability data stripped; skin kept."} Test it in a game — very old mods may render partially.`, "success");
+      paint();
+    } catch (e) {
+      toast("Repair failed", String(e || "Could not repair this mod."), "danger");
+    }
+  }
+
   async function updateMod(id, { silent = false } = {}) {
     if (st.updatingMods[id]) return "failed";
     st.updatingMods[id] = true; paint();
